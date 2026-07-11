@@ -22,12 +22,12 @@ if ($currentFont -notmatch "NSimSun|Gothic|Noto") {
 $Banner = @"
 
 
-███╗   ███╗ █████╗ ██╗███╗   ██╗    ███╗   ███╗ ██████╗ ██████╗
-████╗ ████║██╔══██╗██║████╗  ██║    ████╗ ████║██╔═══██╗██╔══██╗
-██╔████╔██║███████║██║██╔██╗ ██║    ██╔████╔██║██║   ██║██║  ██║
-██║╚██╔╝██║██╔══██║██║██║╚██╗██║    ██║╚██╔╝██║██║   ██║██║  ██║
-██║ ╚═╝ ██║██║  ██║██║██║ ╚████║    ██║ ╚═╝ ██║╚██████╔╝██████╔╝
-╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝    ╚═╝     ╚═╝ ╚═════╝ ╚═════╝
+███╗   ██╗███████╗████████╗████████╗██╗   ██╗    ███╗   ███╗ ██████╗ ██████╗ 
+████╗  ██║██╔════╝╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝    ████╗ ████║██╔═══██╗██╔══██╗
+██╔██╗ ██║█████╗     ██║      ██║    ╚████╔╝     ██╔████╔██║██║   ██║██║  ██║
+██║╚██╗██║██╔══╝     ██║      ██║     ╚██╔╝      ██║╚██╔╝██║██║   ██║██║  ██║
+██║ ╚████║███████╗   ██║      ██║      ██║       ██║ ╚═╝ ██║╚██████╔╝██████╔╝
+╚═╝  ╚═══╝╚══════╝   ╚═╝      ╚═╝      ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═════╝
 
 
 
@@ -51,7 +51,7 @@ $Banner = @"
 Write-Host $Banner -ForegroundColor DarkMagenta
 Write-Host ""
 Write-Host "                Built by " -ForegroundColor Gray -NoNewline
-Write-Host "Main2Packet" -ForegroundColor DarkMagenta
+Write-Host "Nettylagger" -ForegroundColor DarkMagenta
 Write-Host ""
 Write-Host ("━" * 76) -ForegroundColor DarkMagenta
 Write-Host
@@ -1817,10 +1817,10 @@ Write-Host "  History hits:        " -ForegroundColor Gray -NoNewline; Write-Hos
 Write-Host
 Write-Rule "━" 76 Magenta
 Write-Host ""
-Write-Host "  ✨ Analysis complete! Thanks for using Main2Packet Mod Analyzer" -ForegroundColor DarkMagenta
+Write-Host "  ✨ Analysis complete! Thanks for using Nettylagger Mod Analyzer" -ForegroundColor DarkMagenta
 Write-Host ""
 Write-Host "  👤 Built by: " -ForegroundColor White -NoNewline
-Write-Host "Main2Packet" -ForegroundColor DarkMagenta
+Write-Host "Nettylagger" -ForegroundColor DarkMagenta
 Write-Host ""
 Write-Rule "━" 76 Magenta
 Write-Host ""
