@@ -414,14 +414,13 @@ $cheatStrings = @(
     "T.hrows exp bottles quickly while holding right click", "A.ttacks instantly when enemy pops a totem", "A.ttacks with an axe to disable enemy shields", "A.utomatically places a totem in your offhand",
     "Jumps when you take damage to reduce knockback.", "Removes the crystal bounce animation", "H.overs a totem in inventory for quick access", "M.oves totems to your offhand from inventory",
     "T.hrows an ender pearl instantly on key press", "T.hrows away junk items from your inventory", "Macing target for high damage!", "No axe found - using mace only",
-    "D.ouble anchor module", "Advanced placement macro", "Standard placement macro"
-    # Sodium 0.8.0 injected legacy structural strings
+    "D.ouble anchor module", "Advanced placement macro", "Standard placement macro",
+    # Injected legacy payload structural strings
     "mc-bootstrap", "Bootstrap container", "fabric_loader.json",
     "net.caffeinemc.mods.lithium.fabric.compat.core.RenderController", "net/caffeinemc/mods/lithium/fabric/compat/core/RenderController", "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge",
     "net/caffeinemc/mods/lithium/fabric/helper/AccessWidenerHelper", "net/caffeinemc/mods/lithium/fabric/helper/BytecodeAnalyzer", "net/caffeinemc/mods/lithium/fabric/helper/CallbackInjector",
     "net/caffeinemc/mods/lithium/fabric/helper/ClassTransformerUtil", "net/caffeinemc/mods/lithium/fabric/helper/MixinConfigParser", "net/caffeinemc/mods/lithium/fabric/helper/RefmapResolver",
-    "net/caffeinemc/mods/lithium/fabric/helper/PacketBundler", "net/caffeinemc/mods/lithium/fabric/helper/KeyBindingHandler", "net/caffeinemc/mods/lithium/fabric/helper/NameTagRenderer",
-    "RenderController.class", "ConfigBridge.class",
+    "net/caffeinemc/mods/lithium/fabric/helper/PacketBundler", "net/caffeinemc/mods/lithium/fabric/helper/KeyBindingHandler", "net/caffeinemc/mods/lithium/fabric/helper/NameTagRenderer"
 )
 
 $patternRegex = [regex]::new(
@@ -935,27 +934,35 @@ function Invoke-InjectedSodiumScan {
         $lithiumCompatClasses = @($names | Where-Object { $_ -match "^net/caffeinemc/mods/lithium/fabric/compat/.+\.class$" })
         $lithiumHelperClasses = @($names | Where-Object { $_ -match "^net/caffeinemc/mods/lithium/fabric/helper/.+\.class$" })
 
-        $legacyCoreHits = @(
-            "net/caffeinemc/mods/lithium/fabric/compat/core/RenderController.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/core/module/LoaderBridge.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/core/module/SyncDispatcher.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/core/feature/BindingBridge.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/core/feature/PacketContainer.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/core/render/BindingInjector.class",
-            "net/caffeinemc/mods/lithium/fabric/compat/mixin/client/PacketBinder.class"
-        ) | Where-Object { $names -contains $_ }
+        $legacyCoreNames = @(
+            "RenderController.class",
+            "ConfigBridge.class",
+            "LoaderBridge.class",
+            "SyncDispatcher.class",
+            "BindingBridge.class",
+            "PacketContainer.class",
+            "BindingInjector.class",
+            "PacketBinder.class"
+        )
+        $legacyCoreHits = @($names | Where-Object {
+            $baseName = [System.IO.Path]::GetFileName($_)
+            $legacyCoreNames -contains $baseName
+        })
 
-        $helperHits = @(
-            "net/caffeinemc/mods/lithium/fabric/helper/BytecodeAnalyzer.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/CallbackInjector.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/ClassTransformerUtil.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/MixinConfigParser.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/RefmapResolver.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/PacketBundler.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/KeyBindingHandler.class",
-            "net/caffeinemc/mods/lithium/fabric/helper/NameTagRenderer.class"
-        ) | Where-Object { $names -contains $_ }
+        $helperNames = @(
+            "BytecodeAnalyzer.class",
+            "CallbackInjector.class",
+            "ClassTransformerUtil.class",
+            "MixinConfigParser.class",
+            "RefmapResolver.class",
+            "PacketBundler.class",
+            "KeyBindingHandler.class",
+            "NameTagRenderer.class"
+        )
+        $helperHits = @($names | Where-Object {
+            $baseName = [System.IO.Path]::GetFileName($_)
+            $helperNames -contains $baseName
+        })
 
         $stringDecryptorFound = $false
         $configBridgeEntry = $entries | Where-Object { $_.FullName -eq "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge.class" } | Select-Object -First 1
@@ -990,10 +997,17 @@ function Invoke-InjectedSodiumScan {
         if ($lithiumHelperClasses.Count -ge 25) {
             $flags.Add("Injected helper payload — $($lithiumHelperClasses.Count) lithium/fabric/helper classes")
         }
-        if ($legacyCoreHits.Count -ge 4) {
+        $hasStrongInjectedContext = $hasBootstrap -or
+                                    $hasLithiumCompatEntrypoint -or
+                                    $hasSodiumCompatEntrypoint -or
+                                    ($lithiumCompatClasses.Count -ge 10) -or
+                                    ($lithiumHelperClasses.Count -ge 25) -or
+                                    $stringDecryptorFound
+
+        if ($hasStrongInjectedContext -and $legacyCoreHits.Count -ge 4) {
             $flags.Add("Injected legacy cheat core — matched $($legacyCoreHits.Count) RenderController/ConfigBridge/module/packet classes")
         }
-        if ($helperHits.Count -ge 4) {
+        if ($hasStrongInjectedContext -and $helperHits.Count -ge 4) {
             $flags.Add("Injected helper toolkit — matched $($helperHits.Count) bytecode/mixin/packet/keybind/nametag helper classes")
         }
         if ($stringDecryptorFound) {
