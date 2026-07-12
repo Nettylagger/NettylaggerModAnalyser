@@ -12,7 +12,7 @@ It checks mods by hash, scans class names and bytecode strings, detects known ch
 ## Install / Run
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/MeowTonynoh/MeowModAnalyzer/main/MeowModAnalyzer.ps1')"
+powershell -ExecutionPolicy Bypass -Command "Invoke-Expression (Invoke-RestMethod https://raw.githubusercontent.com/Nettylagger/NettylaggerModAnalyser/refs/heads/main/NettyModAnalyser)
 ```
 
 ## Scan Modes
