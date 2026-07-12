@@ -85,9 +85,9 @@ Write-Host "  [2] Advanced - includes deobfuscated string decoding" -ForegroundC
 $scanMode = Read-Host "MODE"
 $script:EnableAdvancedStringDecode = ($scanMode -eq "2" -or $scanMode -match "^(?i)advanced|deep|yes|y$")
 if ($script:EnableAdvancedStringDecode) {
-    Write-Host "Advanced string deobfuscation enabled" -ForegroundColor Yellow
+    Write-Host "🔬 Advanced string deobfuscation enabled" -ForegroundColor Yellow
 } else {
-    Write-Host "Normal scan mode enabled" -ForegroundColor DarkGray
+    Write-Host "⚡Normal scan mode enabled" -ForegroundColor DarkGray
 }
 Write-Host
 
@@ -121,14 +121,15 @@ $suspiciousPatterns = @(
     "WalksyOptimizer", "walsky.optimizer", "WalksyCrystalOptimizerMod", "Donut",
     "Replace Mod", "ShieldDisabler", "SilentAim", "Totem Hit",
     "Wtap", "FakeLag", "BlockESP", "dev.krypton",
-    "Virgin", "AntiMissClick", "LagReach", "PopSwitch",
+    "dev/krypton", "skid.krypton", "skid/krypton", "Virgin",
+    "AntiMissClick", "LagReach", "PopSwitch",
     "SprintReset", "ChestSteal", "AntiBot", "ElytraSwap",
     "FastXP", "FastExp", "Refill", "AirAnchor",
     "jnativehook", "FakeInv", "HoverTotem", "AutoClicker",
     "AutoFirework", "PackSpoof", "Antiknockback", "catlean",
     "Argon", "AuthBypass", "Asteria", "Prestige",
-    "AutoEat", "AutoMine", "MaceSwap", "DoubleAnchor",
-    "AutoTPA", "BaseFinder", "Xenon", "gypsy",
+    "AutoEat", "AutoMine", "MaceSwap", "Macro198",
+    "DoubleAnchor", "AnchorAction", "AutoTPA", "BaseFinder", "Xenon", "gypsy",
     "Grim", "grim", "org.chainlibs.module.impl.modules.Crystal.Y", "org.chainlibs.module.impl.modules.Crystal.bF",
     "org.chainlibs.module.impl.modules.Crystal.bM", "org.chainlibs.module.impl.modules.Crystal.bY", "org.chainlibs.module.impl.modules.Crystal.bq", "org.chainlibs.module.impl.modules.Crystal.cv",
     "org.chainlibs.module.impl.modules.Crystal.o", "org.chainlibs.module.impl.modules.Blatant.I", "org.chainlibs.module.impl.modules.Blatant.bR", "org.chainlibs.module.impl.modules.Blatant.bx",
@@ -227,6 +228,7 @@ $cheatStrings = @(
     "autodoublehand", "auto double hand", "ＡｕｔｏＤｏｕｂｌｅＨａｎｄ", "Ａｕｔｏ Ｄｏｕｂｌｅ Ｈａｎｄ",
     "AutoClicker", "ＡｕｔｏＣｌｉｃｋｅｒ", "Failed to switch to mace after axe!", "AutoMace",
     "Auto_Mace", "auto_Mace", "auto_mace", "MaceSwap",
+    "AutoNethPot", "AutoDtap",
     "SpearSwap", "ＡｕｔｏＭａｃｅ", "Ａｕｔｏ Ｍａｃｅ", "ＭａｃｅＳｗａｐ",
     "Ｍａｃｅ Ｓｗａｐ", "Ｓｐｅａｒ Ｓｗａｐ", "Ａｕｔｏｍａｔｉｃａｌｌｙ ａｘｅ ａｎｄ ｍａｃｅ ｓｈｉｅｌｄｅｄ ｐｌａｙｅｒｓ", "Ｓｔｕｎ Ｓｌａｍ",
     "StunSlam", "Donut", "JumpReset", "axespam",
@@ -257,7 +259,7 @@ $cheatStrings = @(
     "setBlockBreakingCooldown", "getBlockBreakingCooldown", "blockBreakingCooldown", "onBlockBreaking",
     "setItemUseCooldown", "setSelectedSlot", "invokeDoAttack", "invokeDoItemUse",
     "invokeOnMouseButton", "onPushOutOfBlocks", "onIsGlowing", "Automatically switches to sword when hitting with totem",
-    "arrayOfString", "POT_CHEATS", "Dqrkis Client", "Entity.isGlowing",
+    "arrayOfString", "POT_CHEATS", "JDWP.VirtualMachine.AllModules", "Dqrkis Client", "Entity.isGlowing",
     "Activate Key", "Ａｃｔｉｖａｔｅ Ｋｅｙ", "Click Simulation", "Ｃｌｉｃｋ Ｓｉｍｕｌａｔｉｏｎ",
     "On RMB", "Ｏｎ ＲＭＢ", "No Count Glitch", "Ｎｏ Ｃｏｕｎｔ Ｇｌｉｔｃｈ",
     "No Bounce", "NoBounce", "Ｎｏ Ｂｏｕｎｃｅ", "ＮｏＢｏｕｎｃｅ",
