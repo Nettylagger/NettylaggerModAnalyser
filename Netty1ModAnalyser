@@ -286,6 +286,36 @@ $ScanExtensions = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]@(".class", ".json", ".txt", ".toml", ".cfg", ".properties", ".yml", ".yaml", ".mf")
 )
 
+$DqrisKeyChars = @(
+    [byte][char]'d', [byte][char]'D', [byte][char]'q', [byte][char]'h',
+    [byte][char]'A', [byte][char]'P', [byte][char]'S', [byte][char]'W',
+    [byte][char]'O', [byte][char]'C', [byte][char]'F', [byte][char]'G',
+    [byte][char]'R', [byte][char]'M', [byte][char]'T', [byte][char]'a',
+    [byte][char]'m', [byte][char]'_', [byte][char]'.', [byte][char]' '
+)
+$DqrisCommonKeys = @(0, 1, 2, 3, 7, 13, 16, 23, 31, 32, 42, 55, 64, 69, 85, 90, 96, 100, 106, 127, 128, 170, 197, 255)
+
+function Get-DqrisCandidateKeys {
+    param([byte[]]$Bytes)
+
+    $keys = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($k in $script:DqrisCommonKeys) { [void]$keys.Add([int]$k) }
+    if (-not $Bytes -or $Bytes.Length -eq 0) { return @($keys) }
+
+    $maxProbe = [Math]::Min(6, $Bytes.Length)
+    foreach ($plain in $script:DqrisKeyChars) {
+        for ($i = 0; $i -lt $maxProbe; $i++) {
+            $reverse = (($Bytes.Length - 1 - $i) -band 255)
+            [void]$keys.Add((($Bytes[$i] -bxor $plain) -band 255))
+            [void]$keys.Add((($Bytes[$i] -bxor $plain -bxor ($i -band 255)) -band 255))
+            [void]$keys.Add((($Bytes[$i] -bxor $plain -bxor $reverse) -band 255))
+            [void]$keys.Add((($Bytes[$i] - $plain - $i) -band 255))
+            [void]$keys.Add((($plain - $Bytes[$i] - $i) -band 255))
+        }
+    }
+    return @($keys)
+}
+
 function Get-AsciiStringsFromBytes {
     param([byte[]]$Bytes, [int]$MinLen = 4)
     $result = [System.Collections.Generic.List[string]]::new()
@@ -354,7 +384,7 @@ function Get-DecodedByteArrayCandidates {
 
     function Add-DecodesForArray {
         param([byte[]]$ArrayBytes)
-        foreach ($key in 0..255) {
+        foreach ($key in (Get-DqrisCandidateKeys -Bytes $ArrayBytes)) {
             $plain      = New-Object byte[] $ArrayBytes.Length
             $xorIndex   = New-Object byte[] $ArrayBytes.Length
             $xorReverse = New-Object byte[] $ArrayBytes.Length
@@ -391,7 +421,9 @@ function Get-DecodedByteArrayCandidates {
         $chars = foreach ($v in $CharValues) { [char]($v -band 0xffff) }
         $decoded.Add((-join $chars))
 
-        foreach ($key in 0..255) {
+        $probeBytes = New-Object byte[] $CharValues.Count
+        for ($i = 0; $i -lt $CharValues.Count; $i++) { $probeBytes[$i] = [byte]($CharValues[$i] -band 255) }
+        foreach ($key in (Get-DqrisCandidateKeys -Bytes $probeBytes)) {
             $variants = @(
                 $(for ($i = 0; $i -lt $CharValues.Count; $i++) { [char](($CharValues[$i] -bxor $key) -band 0xffff) }),
                 $(for ($i = 0; $i -lt $CharValues.Count; $i++) { [char](($CharValues[$i] -bxor $key -bxor ($i -band 255)) -band 0xffff) }),
@@ -514,7 +546,10 @@ function Invoke-DqrisScan {
             Test-DqrisHit -Text $ascii -Hits $hits -Source "raw"
             Test-DqrisHit -Text $utf8  -Hits $hits -Source "utf8"
 
-            if ($ext -eq ".class") {
+            $hasDecodeContext = $name -match "org/chainlibs|lithium/fabric/(helper|compat)|ConfigBridge|StringDecoder|BuilderFactory|ParserEngine|KeyBindingHandler|ClickEventHandler|GuiOverlayManager|ShieldBlockHelper" -or
+                                $ascii -match "dqrkis|dqris|51\.38\.134\.200|StringDecoder|ConfigBridge|BuilderFactory|ParserEngine|\(\[BI\)Ljava/lang/String;|\(\[BB\)Ljava/lang/String;"
+
+            if ($ext -eq ".class" -and $hasDecodeContext) {
                 foreach ($candidate in (Get-DecodedByteArrayCandidates -Bytes $bytes)) {
                     Test-DqrisHit -Text $candidate -Hits $hits -Source "decoded"
                 }
@@ -548,8 +583,17 @@ function Invoke-JavapDqrisDecode {
         Push-Location $tmp
         try {
             & $jarExe xf $JarPath net/caffeinemc/mods/lithium/fabric org/chainlibs 2>$null
+            $deepClassNames = @(
+                "ConfigBridge.class", "StringDecoder.class", "BuilderFactory.class",
+                "ParserEngine.class", "LoaderBridge.class", "SyncDispatcher.class",
+                "KeyBindingHandler.class", "ClickEventHandler.class", "GuiOverlayManager.class",
+                "ShieldBlockHelper.class", "DamageCalculator.class", "PotionBrewingHelper.class",
+                "ItemDescriptor.class", "InitAdapter.class", "TaskFactory.class",
+                "CheckerBridge.class", "BlockCalculator.class", "SlotEntry.class",
+                "VerificationGuard.class"
+            )
             $classes = @(Get-ChildItem -Recurse -Filter *.class -ErrorAction SilentlyContinue | Where-Object {
-                $_.FullName -match "\\(helper|compat)\\" -or $_.FullName -match "\\org\\chainlibs\\"
+                ($deepClassNames -contains $_.Name) -or $_.FullName -match "\\org\\chainlibs\\"
             })
 
             foreach ($classFile in $classes) {
@@ -559,7 +603,7 @@ function Invoke-JavapDqrisDecode {
 
                 function Test-JavapByteArray {
                     param([byte[]]$Bytes)
-                    foreach ($key in 0..255) {
+                    foreach ($key in (Get-DqrisCandidateKeys -Bytes $Bytes)) {
                         $decoded1 = New-Object byte[] $Bytes.Length
                         $decoded2 = New-Object byte[] $Bytes.Length
                         $decoded3 = New-Object byte[] $Bytes.Length
@@ -582,7 +626,9 @@ function Invoke-JavapDqrisDecode {
                 function Test-JavapCharArray {
                     param([int[]]$Chars)
                     Test-DqrisHit -Text (-join ($Chars | ForEach-Object { [char]($_ -band 0xffff) })) -Hits $hits -Source "javap-char"
-                    foreach ($key in 0..255) {
+                    $probeBytes = New-Object byte[] $Chars.Length
+                    for ($i = 0; $i -lt $Chars.Length; $i++) { $probeBytes[$i] = [byte]($Chars[$i] -band 255) }
+                    foreach ($key in (Get-DqrisCandidateKeys -Bytes $probeBytes)) {
                         $plain = foreach ($i in 0..($Chars.Length - 1)) { [char](($Chars[$i] -bxor $key) -band 0xffff) }
                         $idx = foreach ($i in 0..($Chars.Length - 1)) { [char](($Chars[$i] -bxor $key -bxor ($i -band 255)) -band 0xffff) }
                         $rev = foreach ($i in 0..($Chars.Length - 1)) { [char](($Chars[$i] -bxor $key -bxor (($Chars.Length - 1 - $i) -band 255)) -band 0xffff) }
