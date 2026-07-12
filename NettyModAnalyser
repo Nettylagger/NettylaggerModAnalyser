@@ -85,7 +85,7 @@ Write-Host "  [2] Advanced - includes deobfuscated string decoding" -ForegroundC
 $scanMode = Read-Host "MODE"
 $script:EnableAdvancedStringDecode = ($scanMode -eq "2" -or $scanMode -match "^(?i)advanced|deep|yes|y$")
 if ($script:EnableAdvancedStringDecode) {
-    Write-Host "🔬 Advanced string deobfuscation enabled" -ForegroundColor Yellow
+    Write-Host "🔬 Advanced string deobfuscation enabled" -ForegroundColor DarkGray
 } else {
     Write-Host "⚡Normal scan mode enabled" -ForegroundColor DarkGray
 }
