@@ -429,14 +429,14 @@ $cheatStrings = @(
     "Jumps when you take damage to reduce knockback.", "Removes the crystal bounce animation", "H.overs a totem in inventory for quick access", "M.oves totems to your offhand from inventory",
     "T.hrows an ender pearl instantly on key press", "T.hrows away junk items from your inventory", "Macing target for high damage!", "No axe found - using mace only",
     "D.ouble anchor module", "Advanced placement macro", "Standard placement macro",
-    "Bootstrap container", "fabric_loader.json",
     "A.utomatically axe and mace shielded players", "Accent: dqrkis purple", "F.orce Totem",
-    "GUI Key: F12", "P.redict Crystals", "http://51.38.134.200:3000/apo/launch", "Zork With Totem",
+    "GUI Key: F12", "P.redict Crystals", "http://51.38.134.200:3000/api/verify",
+    "http://51.38.134.200:3000/apo/launch", "Work With Totem",
     "Action Speed (ms)", "C.lick Simulation", "D.amage Tick",
     "O.nly Axe", "P.article Chance", "P.lace blocks ",
     "P.redict ", "R.andom Delay Min",
     "S.how", "S.how Health", "S.tay Open For",
-    "S.top On Kill", "Sword Swap", "W.hile Ascen","Search modules...",
+    "S.top On Kill", "Sword Swap", "W.hile Ascen", "Search modules...",
     "dqrkis.xyz", "dqris.xyz"
 )
 
@@ -534,6 +534,44 @@ function Get-BytecodeIntConstantBefore {
     return $null
 }
 
+function Get-CheatCandidateKeys {
+    param([byte[]]$Bytes)
+
+    $keys = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($k in @(0, 1, 2, 3, 7, 13, 16, 23, 31, 32, 42, 55, 64, 69, 85, 90, 96, 100, 106, 127, 128, 170, 197, 255)) {
+        [void]$keys.Add([int]$k)
+    }
+    if (-not $Bytes -or $Bytes.Length -eq 0) { return @($keys) }
+
+    $plainChars = [System.Collections.Generic.HashSet[byte]]::new()
+    foreach ($s in $script:cheatStrings) {
+        if ([string]::IsNullOrEmpty($s)) { continue }
+        $chars = $s.ToCharArray()
+        foreach ($c in @($chars[0], $(if ($chars.Length -gt 1) { $chars[1] } else { $null }))) {
+            if ($null -ne $c -and [int][char]$c -le 255) {
+                [void]$plainChars.Add([byte][char]$c)
+            }
+        }
+    }
+    foreach ($c in @([byte][char]'A',[byte][char]'a',[byte][char]'d',[byte][char]'D',[byte][char]'h',[byte][char]'_',[byte][char]'.',[byte][char]' ')) {
+        [void]$plainChars.Add($c)
+    }
+
+    $maxProbe = [Math]::Min(6, $Bytes.Length)
+    foreach ($plain in $plainChars) {
+        for ($i = 0; $i -lt $maxProbe; $i++) {
+            $reverse = (($Bytes.Length - 1 - $i) -band 255)
+            [void]$keys.Add((($Bytes[$i] -bxor $plain) -band 255))
+            [void]$keys.Add((($Bytes[$i] -bxor $plain -bxor ($i -band 255)) -band 255))
+            [void]$keys.Add((($Bytes[$i] -bxor $plain -bxor $reverse) -band 255))
+            [void]$keys.Add((($Bytes[$i] - $plain - $i) -band 255))
+            [void]$keys.Add((($plain - $Bytes[$i] - $i) -band 255))
+        }
+    }
+
+    return @($keys)
+}
+
 function Get-ObfuscatedByteArrayStrings {
     param([byte[]]$Bytes)
 
@@ -553,7 +591,7 @@ function Get-ObfuscatedByteArrayStrings {
         param([byte[]]$Encoded)
 
         $len = $Encoded.Length
-        for ($key = 0; $key -lt 256; $key++) {
+        foreach ($key in (Get-CheatCandidateKeys -Bytes $Encoded)) {
             $plainIndex = New-Object byte[] $len
             $plainPlain = New-Object byte[] $len
             $plainReverseIndex = New-Object byte[] $len
@@ -703,9 +741,33 @@ function Invoke-ModScan {
                         if ($utf8.Contains($s))  { [void]$foundStrings.Add($s) }
                     }
 
+                    $hasAdvancedDecodeContext = $false
+                    if ($name -match '\.class$' -and $script:EnableAdvancedStringDecode) {
+                        $asciiNormalized = $ascii -replace '[^A-Za-z0-9]+', ''
+                        $nameNormalized  = $name  -replace '[^A-Za-z0-9]+', ''
+
+                        $hasDecoderShape =
+                            $ascii.Contains("StringDecoder") -or
+                            $ascii.Contains("[[B") -or
+                            $ascii.Contains("Base64") -or
+                            $ascii.Contains("fromBase64String") -or
+                            $ascii.Contains("([BI)Ljava/lang/String;") -or
+                            $ascii.Contains("([BB)Ljava/lang/String;") -or
+                            $ascii.Contains("([CI)Ljava/lang/String;") -or
+                            $ascii.Contains("java/lang/String") -or
+                            $ascii.Contains("UTF_8")
+
+                        $hasCheatContext =
+                            $name -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
+                            $nameNormalized -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
+                            $asciiNormalized -match "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|TokenLogger|TokenGrabber|SessionStealer|DiscordToken|Webhook|RemoteAccess|ReverseShell|Backdoor|KeyLogger|C2Server|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
+
+                        $hasAdvancedDecodeContext = $hasDecoderShape -and $hasCheatContext
+                    }
+
                     $hasByteNewArray = $false
                     $hasCharNewArray = $false
-                    if ($name -match '\.class$') {
+                    if ($hasAdvancedDecodeContext) {
                         for ($bi = 0; $bi -lt ($bytes.Length - 1); $bi++) {
                             if ($bytes[$bi] -eq 0xBC -and $bytes[$bi + 1] -eq 0x08) {
                                 $hasByteNewArray = $true
@@ -722,12 +784,7 @@ function Invoke-ModScan {
                     if ($script:EnableAdvancedStringDecode -and
                         $name -match '\.class$' -and
                         (($hasByteNewArray -or $hasCharNewArray) -and
-                        ($ascii.Contains("StringDecoder") -or
-                         $ascii.Contains("[[B") -or
-                         $ascii.Contains("Base64") -or
-                         $ascii.Contains("fromBase64String") -or
-                         $ascii.Contains("([BI)Ljava/lang/String;") -or
-                         $ascii.Contains("([BB)Ljava/lang/String;")))) {
+                        $hasAdvancedDecodeContext)) {
                         $decodedStrings = Get-ObfuscatedByteArrayStrings -Bytes $bytes
                         foreach ($decoded in $decodedStrings) {
                             foreach ($s in $cheatStringSet) {
