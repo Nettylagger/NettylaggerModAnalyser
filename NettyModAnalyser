@@ -436,7 +436,7 @@ $cheatStrings = @(
     "O.nly Axe", "P.article Chance", "P.lace blocks ",
     "P.redict ", "R.andom Delay Min",
     "S.how", "S.how Health", "S.tay Open For",
-    "S.top On Kill", "Sword Swap", "W.hile Ascen",
+    "S.top On Kill", "Sword Swap", "W.hile Ascen","Search modules...",
     "dqrkis.xyz", "dqris.xyz"
 )
 
