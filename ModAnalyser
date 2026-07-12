@@ -415,6 +415,13 @@ $cheatStrings = @(
     "Jumps when you take damage to reduce knockback.", "Removes the crystal bounce animation", "H.overs a totem in inventory for quick access", "M.oves totems to your offhand from inventory",
     "T.hrows an ender pearl instantly on key press", "T.hrows away junk items from your inventory", "Macing target for high damage!", "No axe found - using mace only",
     "D.ouble anchor module", "Advanced placement macro", "Standard placement macro"
+    # Sodium 0.8.0 injected legacy structural strings
+    "mc-bootstrap", "Bootstrap container", "fabric_loader.json",
+    "net.caffeinemc.mods.lithium.fabric.compat.core.RenderController", "net/caffeinemc/mods/lithium/fabric/compat/core/RenderController", "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge",
+    "net/caffeinemc/mods/lithium/fabric/helper/AccessWidenerHelper", "net/caffeinemc/mods/lithium/fabric/helper/BytecodeAnalyzer", "net/caffeinemc/mods/lithium/fabric/helper/CallbackInjector",
+    "net/caffeinemc/mods/lithium/fabric/helper/ClassTransformerUtil", "net/caffeinemc/mods/lithium/fabric/helper/MixinConfigParser", "net/caffeinemc/mods/lithium/fabric/helper/RefmapResolver",
+    "net/caffeinemc/mods/lithium/fabric/helper/PacketBundler", "net/caffeinemc/mods/lithium/fabric/helper/KeyBindingHandler", "net/caffeinemc/mods/lithium/fabric/helper/NameTagRenderer",
+    "RenderController.class", "ConfigBridge.class",
 )
 
 $patternRegex = [regex]::new(
@@ -886,6 +893,119 @@ function Invoke-BypassScan {
     return $flags
 }
 
+function Invoke-InjectedSodiumScan {
+    param([string]$FilePath)
+
+    $flags = [System.Collections.Generic.List[string]]::new()
+
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+        $entries = @($zip.Entries)
+        $names = @($entries | ForEach-Object { $_.FullName })
+
+        $fabricText = ""
+        $fmj = $entries | Where-Object { $_.FullName -eq "fabric.mod.json" } | Select-Object -First 1
+        if ($fmj) {
+            try {
+                $s = $fmj.Open()
+                $r = New-Object System.IO.StreamReader($s)
+                $fabricText = $r.ReadToEnd()
+                $r.Close(); $s.Close()
+            } catch { }
+        }
+
+        $fabricLoaderText = ""
+        $flj = $entries | Where-Object { $_.FullName -eq "fabric_loader.json" } | Select-Object -First 1
+        if ($flj) {
+            try {
+                $s = $flj.Open()
+                $r = New-Object System.IO.StreamReader($s)
+                $fabricLoaderText = $r.ReadToEnd()
+                $r.Close(); $s.Close()
+            } catch { }
+        }
+
+        $hasBootstrap = ($names -contains "fabric_loader.json") -or
+                        ($fabricLoaderText -match '"id"\s*:\s*"mc-bootstrap"') -or
+                        ($fabricLoaderText -match "Bootstrap container")
+
+        $hasLithiumCompatEntrypoint = $fabricText -match "net\.caffeinemc\.mods\.lithium\.fabric\.compat\.core\.RenderController"
+        $hasSodiumCompatEntrypoint  = $fabricText -match "net\.caffeinemc\.mods\.sodium\.fabric\.compat\.a\.RenderD"
+
+        $lithiumCompatClasses = @($names | Where-Object { $_ -match "^net/caffeinemc/mods/lithium/fabric/compat/.+\.class$" })
+        $lithiumHelperClasses = @($names | Where-Object { $_ -match "^net/caffeinemc/mods/lithium/fabric/helper/.+\.class$" })
+
+        $legacyCoreHits = @(
+            "net/caffeinemc/mods/lithium/fabric/compat/core/RenderController.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/core/module/LoaderBridge.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/core/module/SyncDispatcher.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/core/feature/BindingBridge.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/core/feature/PacketContainer.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/core/render/BindingInjector.class",
+            "net/caffeinemc/mods/lithium/fabric/compat/mixin/client/PacketBinder.class"
+        ) | Where-Object { $names -contains $_ }
+
+        $helperHits = @(
+            "net/caffeinemc/mods/lithium/fabric/helper/BytecodeAnalyzer.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/CallbackInjector.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/ClassTransformerUtil.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/MixinConfigParser.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/RefmapResolver.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/PacketBundler.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/KeyBindingHandler.class",
+            "net/caffeinemc/mods/lithium/fabric/helper/NameTagRenderer.class"
+        ) | Where-Object { $names -contains $_ }
+
+        $stringDecryptorFound = $false
+        $configBridgeEntry = $entries | Where-Object { $_.FullName -eq "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge.class" } | Select-Object -First 1
+        if ($configBridgeEntry) {
+            try {
+                $s = $configBridgeEntry.Open()
+                $ms = New-Object System.IO.MemoryStream
+                $s.CopyTo($ms); $s.Close()
+                $ascii = [System.Text.Encoding]::ASCII.GetString($ms.ToArray())
+                $ms.Dispose()
+                if ($ascii -match "\[\[B" -and
+                    $ascii -match "UTF_8" -and
+                    $ascii -match "java/lang/String" -and
+                    $ascii -match "\(II\)Ljava/lang/String;") {
+                    $stringDecryptorFound = $true
+                }
+            } catch { }
+        }
+
+        if ($hasBootstrap) {
+            $flags.Add("Injected mod container — fabric_loader.json / mc-bootstrap payload present")
+        }
+        if ($hasLithiumCompatEntrypoint) {
+            $flags.Add("Injected legacy entrypoint — fake lithium RenderController registered as client entrypoint")
+        }
+        if ($hasSodiumCompatEntrypoint) {
+            $flags.Add("Injected compat entrypoint — hidden compat RenderD registered as client entrypoint")
+        }
+        if ($lithiumCompatClasses.Count -ge 10) {
+            $flags.Add("Injected legacy package — $($lithiumCompatClasses.Count) net/caffeinemc/mods/lithium/fabric/compat classes")
+        }
+        if ($lithiumHelperClasses.Count -ge 25) {
+            $flags.Add("Injected helper payload — $($lithiumHelperClasses.Count) lithium/fabric/helper classes")
+        }
+        if ($legacyCoreHits.Count -ge 4) {
+            $flags.Add("Injected legacy cheat core — matched $($legacyCoreHits.Count) RenderController/ConfigBridge/module/packet classes")
+        }
+        if ($helperHits.Count -ge 4) {
+            $flags.Add("Injected helper toolkit — matched $($helperHits.Count) bytecode/mixin/packet/keybind/nametag helper classes")
+        }
+        if ($stringDecryptorFound) {
+            $flags.Add("Runtime string decryptor — ConfigBridge builds strings from byte arrays at runtime")
+        }
+
+        $zip.Dispose()
+    } catch { }
+
+    return $flags
+}
+
 function Invoke-JvmScan {
     $results = [System.Collections.Generic.List[string]]::new()
 
@@ -1347,6 +1467,8 @@ foreach ($jar in $jarFiles) {
     Write-Host "`r[$spinner] Bypass scan: $idx/$totalFiles - $($jar.Name)" -ForegroundColor Magenta -NoNewline
 
     $bypassFlags = Invoke-BypassScan -FilePath $jar.FullName
+    $injectedSodiumFlags = Invoke-InjectedSodiumScan -FilePath $jar.FullName
+    foreach ($flag in $injectedSodiumFlags) { $bypassFlags.Add($flag) }
 
     if ($bypassFlags.Count -gt 0) {
         $bypassMods += [PSCustomObject]@{
@@ -1634,4 +1756,3 @@ Write-Rule "━" 76 Magenta
 Write-Host ""
 Write-Host "Press any key to exit..." -ForegroundColor DarkGray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-
