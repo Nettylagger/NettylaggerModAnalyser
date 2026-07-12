@@ -429,18 +429,14 @@ $cheatStrings = @(
     "Jumps when you take damage to reduce knockback.", "Removes the crystal bounce animation", "H.overs a totem in inventory for quick access", "M.oves totems to your offhand from inventory",
     "T.hrows an ender pearl instantly on key press", "T.hrows away junk items from your inventory", "Macing target for high damage!", "No axe found - using mace only",
     "D.ouble anchor module", "Advanced placement macro", "Standard placement macro",
-    # Injected legacy payload structural strings
     "Bootstrap container", "fabric_loader.json",
-    # Deobfuscated legacy payload strings
     "A.utomatically axe and mace shielded players", "Accent: dqrkis purple", "F.orce Totem",
     "GUI Key: F12", "P.redict Crystals", "http://51.38.134.200:3000/apo/launch", "Zork With Totem",
-    # Additional deobfuscated legacy module/settings strings
     "Action Speed (ms)", "C.lick Simulation", "D.amage Tick",
     "O.nly Axe", "P.article Chance", "P.lace blocks ",
     "P.redict ", "R.andom Delay Min",
     "S.how", "S.how Health", "S.tay Open For",
     "S.top On Kill", "Sword Swap", "W.hile Ascen",
-    # Dqrkis domains
     "dqrkis.xyz", "dqris.xyz"
 )
 
