@@ -432,6 +432,7 @@ $cheatStrings = @(
     "Bootstrap container", "fabric_loader.json",
     "A.utomatically axe and mace shielded players", "Accent: dqrkis purple", "F.orce Totem",
     "GUI Key: F12", "P.redict Crystals", "http://51.38.134.200:3000/apo/launch", "Zork With Totem",
+    "fabric_loader.json",
     "Action Speed (ms)", "C.lick Simulation", "D.amage Tick",
     "O.nly Axe", "P.article Chance", "P.lace blocks ",
     "P.redict ", "R.andom Delay Min",
