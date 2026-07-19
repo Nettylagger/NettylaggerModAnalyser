@@ -134,3 +134,10 @@ Normal mode is faster and better for scanning many mods.
 Advanced mode is slower, but can catch payloads that hide cheat strings through bytecode string obfuscation.
 
 This tool is intended for defensive mod analysis, server moderation, and client integrity checks.
+
+## Credits
+
+Original base:
+
+Meow Mod Analyser by Tonynoh
+
