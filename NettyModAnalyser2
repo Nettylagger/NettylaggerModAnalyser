@@ -70,8 +70,7 @@ function Write-Banner {
 
 "@
     Write-Host $Banner -ForegroundColor Green
-    Write-Host "  Netty Dqrkis Fucker" -ForegroundColor Black -BackgroundColor Green
-    Write-Host "  Dqrkis/Dqris cheat-string scanner" -ForegroundColor DarkGreen
+    Write-Host "Netty Dqrkis Fucker" -ForegroundColor Black -BackgroundColor Green
     Write-Host ("  " + ("=" * 64)) -ForegroundColor Green
     Write-Host ""
 }
@@ -196,10 +195,14 @@ $DqrisStrings = @(
 $DqrisStructural = @(
     "org/chainlibs/module/impl/modules",
     "org.chainlibs.module.impl.modules",
+    "net/caffeinemc/mods/lithium/fabric/compat/core/config",
     "net/caffeinemc/mods/lithium/fabric/compat/core/config/ConfigBridge",
+    "net/caffeinemc/mods/lithium/fabric/compat/core/module",
+    "net/caffeinemc/mods/lithium/fabric/compat/core/module/setting",
     "net/caffeinemc/mods/lithium/fabric/compat/core/module/setting/StringDecoder",
     "net/caffeinemc/mods/lithium/fabric/compat/core/module/BuilderFactory",
     "net/caffeinemc/mods/lithium/fabric/compat/core/module/ParserEngine",
+    "net/caffeinemc/mods/lithium/fabric/helper",
     "net/caffeinemc/mods/lithium/fabric/helper/KeyBindingHandler",
     "net/caffeinemc/mods/lithium/fabric/helper/ClickEventHandler",
     "net/caffeinemc/mods/lithium/fabric/helper/GuiOverlayManager",
@@ -687,7 +690,7 @@ function Invoke-DqrisScan {
     }
 
     $structureCount = @($hits | Where-Object { $_ -match "\[structure\]" }).Count
-    if ($structureCount -ge 3) {
+    if ($structureCount -ge 1) {
         foreach ($legacyHit in $script:DqrisLegacyDecodedStrings) {
             if (-not $hits.Contains($legacyHit)) { $hits.Add($legacyHit) }
         }
@@ -1113,23 +1116,17 @@ if ($flaggedMods.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "  Analysis complete! Thanks for using CheesyDqrkisFucker " -NoNewline -ForegroundColor White
+Write-Host "  Analysis complete! Thanks for using NettyDqrkisFucker " -NoNewline -ForegroundColor White
 Write-Host "o" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Created by  : " -NoNewline -ForegroundColor DarkGray
-Write-Host "cheese cat" -ForegroundColor Green
+Write-Host "Nettylagger, cheese cat, nic" -ForegroundColor Green
 Write-Host "  Discord     : " -NoNewline -ForegroundColor DarkGray
-Write-Host "cheese_cat0" -ForegroundColor Green
+Write-Host "Nettylagger, cheese_cat0, mecz.exe" -ForegroundColor Green
 Write-Host "  GitHub      : " -NoNewline -ForegroundColor DarkGray
-Write-Host "github.com/cheesecatlol" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Created by  : " -NoNewline -ForegroundColor DarkGray
-Write-Host "nic" -ForegroundColor Green
-Write-Host "  Discord     : " -NoNewline -ForegroundColor DarkGray
-Write-Host "mecz.exe" -ForegroundColor Green
-Write-Host "  GitHub      : " -NoNewline -ForegroundColor DarkGray
-Write-Host "github.com/Nickk196" -ForegroundColor Green
+Write-Host "github.com/Nettylagger, github.com/cheesecatlol, github.com/Nickk196" -ForegroundColor Green
 Write-Host ""
 Write-Host $sumSep -ForegroundColor DarkGreen
 Write-Host ""
 Read-Host "  Press Enter to exit"
+
