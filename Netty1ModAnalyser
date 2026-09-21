@@ -1063,17 +1063,62 @@ function Invoke-ModScan {
                 }
             }
 
-            # weak-fragment damping: short tokens (<=7 chars) only count when a strong
-            # token (>=8) is present in the same jar, or 3+ distinct weak tokens occur.
+            # fragment damping: keep only evidence-backed tokens — deobfuscated origin,
+            # strong path hit (>=8 chars), or 3+ distinct weak tokens in the same jar
+            # (group effect). Content-only tokens never count alone.
+            # Substring-redundant tokens (e.g. "hover" inside "hovertotem") are dropped.
             if ($foundFragments.Count -gt 0) {
-                $bare = @($foundFragments | ForEach-Object { ($_ -replace '^\[[^\]]+\]\s*', '') -replace '^\[nested\]\s*', '' })
-                $hasStrong = @($bare | Where-Object { $_.Length -ge 8 }).Count -gt 0
-                if (-not $hasStrong) {
-                    $distinctWeak = @($bare | Sort-Object -Unique)
-                    if ($distinctWeak.Count -lt 3) {
-                        $foundFragments.Clear()
+                $stats = @{}
+                foreach ($f in $foundFragments) {
+                    $rest = $f; $isPath = $false; $isDeobf = $false
+                    while ($true) {
+                        if ($rest.StartsWith("[nested] "))    { $rest = $rest.Substring(9); continue }
+                        if ($rest.StartsWith("[path] "))      { $isPath = $true;  $rest = $rest.Substring(7); continue }
+                        if ($rest.StartsWith("[deobf-alt] ")) { $isDeobf = $true; $rest = $rest.Substring(12); continue }
+                        if ($rest.StartsWith("[deobf] "))     { $isDeobf = $true; $rest = $rest.Substring(8); continue }
+                        if ($rest.StartsWith("[alt] "))       { $rest = $rest.Substring(6); continue }
+                        break
+                    }
+                    $rest = $rest.Trim()
+                    if ([string]::IsNullOrWhiteSpace($rest)) { continue }
+                    if (-not $stats.ContainsKey($rest)) { $stats[$rest] = @{ Path = $false; Deobf = $false } }
+                    if ($isPath -and $rest.Length -ge 8) { $stats[$rest].Path = $true }
+                    if ($isDeobf) { $stats[$rest].Deobf = $true }
+                }
+
+                $distinct = @($stats.Keys)
+                $weak = @($distinct | Where-Object { -not $stats[$_].Deobf -and -not $stats[$_].Path })
+                $keep = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+                foreach ($t in $distinct) {
+                    $s = $stats[$t]
+                    if ($s.Deobf -or $s.Path) { [void]$keep.Add($t) }
+                }
+                if ($weak.Count -ge 3) { foreach ($t in $weak) { [void]$keep.Add($t) } }
+                foreach ($t in @($keep)) {
+                    foreach ($other in $distinct) {
+                        if ($other.Length -gt $t.Length -and $other.Contains($t)) {
+                            $so = $stats[$other]
+                            if ($so.Deobf -or $so.Path -or $keep.Contains($other)) {
+                                [void]$keep.Remove($t)
+                            }
+                            break
+                        }
                     }
                 }
+
+                $final = [System.Collections.Generic.HashSet[string]]::new()
+                foreach ($t in $keep) {
+                    $s = $stats[$t]
+                    $prefix = ""
+                    if ($s.Deobf) { $prefix = "[deobf] " } elseif ($s.Path) { $prefix = "[path] " }
+                    [void]$final.Add($prefix + $t)
+                }
+                if ($final.Count -eq 1) {
+                    $only = @($final)[0] -replace '^\[[^\]]+\] ', ''
+                    if ($only.Length -lt 10 -and -not @($final)[0].StartsWith("[deobf] ")) { $final.Clear() }
+                }
+                $foundFragments.Clear()
+                foreach ($t in $final) { [void]$foundFragments.Add($t) }
             }
         }
 
@@ -1253,19 +1298,67 @@ function Invoke-ObfuscationScan {
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
 
-        if ($script:FastReady -and $Depth -eq 0) {
+        if ($script:FastReady -and $Depth -lt 2) {
             foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
                 try {
                     $msN = New-Object System.IO.MemoryStream
                     $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
-                    $tmpJar = [System.IO.Path]::GetTempFileName()
+                    $tmpJar = Join-Path ([System.IO.Path]::GetTempPath()) ("netty_" + [Guid]::NewGuid().ToString("N") + ".jar")
                     $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
-                    $subFlags = Invoke-ObfuscationScan -FilePath $tmpJar -Depth 1
+                    $subFlags = Invoke-ObfuscationScan -FilePath $tmpJar -Depth ($Depth + 1)
                     Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
                     foreach ($sf in $subFlags) { $flags.Add("[nested] " + $sf) }
-                } catch { }
+                } catch {
+                    if ($script:ObfDebug) { Write-Host "  [obf recursion error] $($_.Exception.Message)" -ForegroundColor Red }
+                }
             }
         }
+
+        # --- fake library identity / hex-name obfuscation / unexpected bundles ---
+        try {
+            $hexClassCount  = 0
+            $xnumClassCount = 0
+            $nestedJarCount = 0
+            $fmjId = ""; $fmjEntryRaw = ""; $fmjMixinCount = 0
+
+            foreach ($entry in $archive.Entries) {
+                if ($entry.FullName -match "^META-INF/jars/.+\.jar$") { $nestedJarCount++ }
+                if ($entry.FullName -match "\.class$") {
+                    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($entry.FullName)
+                    if ($baseName -cmatch "^x[0-9A-F]{6}$") { $hexClassCount++ }
+                    elseif ($baseName -cmatch "^x\d+$")     { $xnumClassCount++ }
+                }
+            }
+
+            $fmjEntry2 = $archive.Entries | Where-Object { $_.FullName -eq "fabric.mod.json" } | Select-Object -First 1
+            if ($fmjEntry2) {
+                $s2 = $fmjEntry2.Open(); $r2 = New-Object System.IO.StreamReader($s2); $t2 = $r2.ReadToEnd(); $r2.Close(); $s2.Close()
+                if ($t2 -match '"id"\s*:\s*"([^"]+)"')          { $fmjId = $matches[1] }
+                if ($t2 -match '"client"\s*:\s*\[\s*"([^"]+)"') { $fmjEntryRaw = $matches[1] }
+                if ($t2 -match '"mixins"\s*:\s*\[([^\]]*)\]')   { $fmjMixinCount = ([regex]::Matches($matches[1], '"')).Count / 2 }
+            }
+
+            if ($hexClassCount -ge 5)   { $flags.Add("Hex-suffix class obfuscation (x469B07 style) — $hexClassCount classes") }
+            if ($xnumClassCount -ge 10) { $flags.Add("x-number class obfuscation (x0, x1, x2...) — $xnumClassCount classes") }
+
+            $smallLibIds = @("clothbasicmath","cloth-basic-math","jankson","spruceui")
+            if ($fmjId -and ($smallLibIds -contains $fmjId.ToLower())) {
+                $obfTotal = $hexClassCount + $xnumClassCount
+                if ($obfTotal -gt 0) {
+                    $flags.Add("FAKE LIBRARY IDENTITY — claims to be '$fmjId' but contains $obfTotal obfuscated classes")
+                }
+                if ($nestedJarCount -gt 0) {
+                    $flags.Add("Library bundles unexpected nested JARs ($nestedJarCount) — small libs are standalone")
+                }
+                if ($fmjMixinCount -gt 0) {
+                    $flags.Add("Library declares mixins ($fmjMixinCount) — '$fmjId' has no legitimate reason to inject code")
+                }
+            }
+
+            if ($fmjEntryRaw -and ($fmjEntryRaw -cmatch "\.x[0-9A-F]{6}$" -or $fmjEntryRaw -cmatch "(^|\.)([a-z]\.){3,}")) {
+                $flags.Add("Entrypoint in obfuscated package — $fmjEntryRaw")
+            }
+        } catch { }
 
         $totalClass    = 0
         $numericCount  = 0
@@ -1995,6 +2088,25 @@ function Write-SuspiciousCard {
         }
     }
 
+    if ($Mod.Flags -and $Mod.Flags.Count -gt 0) {
+        Write-Host "  │" -ForegroundColor DarkYellow
+        Write-Host "  │  " -ForegroundColor DarkYellow -NoNewline
+        Write-Host "OBFUSCATION FLAGS" -ForegroundColor DarkGray
+        foreach ($flag in $Mod.Flags) {
+            if ($flag -match "^(.+?) — (.+)$") {
+                Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
+                Write-Host "⚑ " -ForegroundColor Yellow -NoNewline
+                Write-Host $matches[1] -ForegroundColor White
+                Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
+                Write-Host $matches[2] -ForegroundColor Gray
+            } else {
+                Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
+                Write-Host "⚑ " -ForegroundColor Yellow -NoNewline
+                Write-Host $flag -ForegroundColor White
+            }
+        }
+    }
+
     if ($Mod.Fullwidth -and $Mod.Fullwidth.Count -gt 0) {
         Write-Host "  │" -ForegroundColor DarkYellow
         Write-Host "  │  " -ForegroundColor DarkYellow -NoNewline
@@ -2166,6 +2278,7 @@ foreach ($jar in $jarFiles) {
             Strings  = $result.Strings
             Fragments = $result.Fragments
             Fullwidth = $result.Fullwidth
+            Flags = [System.Collections.Generic.List[string]]::new()
             Hidden = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
         }
         $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
@@ -2217,16 +2330,19 @@ foreach ($jar in $jarFiles) {
     $obfFlags = Invoke-ObfuscationScan -FilePath $jar.FullName
 
     if ($obfFlags.Count -gt 0) {
-        $alreadyFlagged = ($suspiciousMods | Where-Object { $_.FileName -eq $jar.Name }).Count -gt 0 -or
-                          ($bypassMods     | Where-Object { $_.FileName -eq $jar.Name }).Count -gt 0
-        if (-not $alreadyFlagged) {
+        $existing = $suspiciousMods | Where-Object { $_.FileName -eq $jar.Name } | Select-Object -First 1
+        if (-not $existing) { $existing = $bypassMods | Where-Object { $_.FileName -eq $jar.Name } | Select-Object -First 1 }
+        if ($existing) {
+            # merge into the existing card instead of dropping the evidence
+            foreach ($f in $obfFlags) { $existing.Flags.Add($f) }
+        } else {
             $obfuscatedMods += [PSCustomObject]@{
                 FileName = $jar.Name
                 Flags    = $obfFlags
                 Hidden   = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
             }
-            $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
         }
+        $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
     }
 }
 
