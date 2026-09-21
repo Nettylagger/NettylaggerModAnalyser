@@ -112,6 +112,10 @@ if ($mcProcess) {
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
+$script:CheatCtxName      = @("Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher")
+$script:CheatCtxNameNorm  = @("Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher")
+$script:CheatCtxAscii     = "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
+
 $suspiciousPatterns = @(
     "AimAssist", "AnchorTweaks", "AutoAnchor", "AutoCrystal",
     "AutoDoubleHand", "AutoHitCrystal", "AutoPot", "AutoTotem",
@@ -354,9 +358,7 @@ $cheatStrings = @(
     "AACBypass", "VerusDisabler", "IntaveBypass", "WatchdogBypass",
     "PacketMine", "PacketWalk", "PacketSneak", "PacketCancel",
     "PacketDupe", "PacketSpam", "SelfDestruct", "HideClient",
-    "SessionStealer", "TokenLogger", "TokenGrabber", "DiscordToken",
-    "RemoteAccess", "ReverseShell", "C2Server", "Backdoor",
-    "KeyLogger", "StashFinder", "TrailFinder", "imgui.binding",
+    "StashFinder", "TrailFinder", "imgui.binding",
     "JNativeHook", "GlobalScreen", "NativeKeyListener", "client-refmap.json",
     "cheat-refmap.json", "aHR0cDovL2FwaS5ub3ZhY2xpZW50LmxvbC93ZWJob29rLnR4dA==", "meteordevelopment", "cc/novoline",
     "com/alan/clients", "club/maxstats", "wtf/moonlight", "me/zeroeightsix/kami",
@@ -484,54 +486,242 @@ foreach ($s in $cheatStrings) {
 }
 $cheatKeywordTokens = @($derivedKeywordSet)
 
-# Fast multi-keyword scanner: prefix-bucket index, one O(n) pass per file.
-$script:UseCsharpScanner = $true
+# Fast multi-pattern scanner: Aho-Corasick automaton, ONE pass over each file
+# matches all pattern lists simultaneously (~50x faster than per-string Contains).
+$script:FastReady = $false
 try {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
+using System.Text;
+using System.Text.RegularExpressions;
 
-namespace CheatScan {
-    public static class Scanner {
-        static Dictionary<string, List<string>> _buckets;
-        const int MinLen = 5;
+namespace NettyScan
+{
+    public class ScanResult
+    {
+        public List<string> PatternHits = new List<string>();
+        public List<string> StringHits = new List<string>();
+        public List<string> Fullwidth = new List<string>();
+        public List<string> Fuzzy = new List<string>();
+        public bool DecoderShape;
+        public bool HasByteNewArray;
+        public bool HasCharNewArray;
+    }
 
-        public static void Build(IEnumerable<string> keywords) {
-            var buckets = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-            foreach (var kw in keywords) {
-                if (string.IsNullOrEmpty(kw) || kw.Length < MinLen) { continue; }
-                var key = kw.Substring(0, MinLen);
-                List<string> list;
-                if (!buckets.TryGetValue(key, out list)) {
-                    list = new List<string>();
-                    buckets.Add(key, list);
-                }
-                if (!list.Contains(kw)) { list.Add(kw); }
+    public class DecodedResult
+    {
+        public List<string> Exact = new List<string>();
+        public List<string> Fuzzy = new List<string>();
+        public List<string> FuzzyAlt = new List<string>();
+    }
+
+    internal class Aho
+    {
+        private class Node { public Dictionary<char, Node> Next = new Dictionary<char, Node>(); public Node Fail; public List<string> Out; }
+        private Node _root = new Node();
+
+        public void Add(string s)
+        {
+            Node n = _root;
+            foreach (char c in s)
+            {
+                Node t;
+                if (!n.Next.TryGetValue(c, out t)) { t = new Node(); n.Next[c] = t; }
+                n = t;
             }
-            _buckets = buckets;
+            if (n.Out == null) n.Out = new List<string>();
+            if (!n.Out.Contains(s)) n.Out.Add(s);
         }
 
-        public static List<string> Scan(string text) {
-            var hits = new List<string>();
-            if (_buckets == null || string.IsNullOrEmpty(text)) { return hits; }
-            int n = text.Length;
-            for (int i = 0; i + MinLen <= n; i++) {
-                List<string> list;
-                if (!_buckets.TryGetValue(text.Substring(i, MinLen), out list)) { continue; }
-                foreach (var kw in list) {
-                    if (kw.Length <= n - i && string.CompareOrdinal(text, i, kw, 0, kw.Length) == 0) {
-                        hits.Add(kw);
+        public void Compile()
+        {
+            var q = new Queue<Node>();
+            foreach (var kv in _root.Next) { kv.Value.Fail = _root; q.Enqueue(kv.Value); }
+            while (q.Count > 0)
+            {
+                Node n = q.Dequeue();
+                foreach (var kv in n.Next)
+                {
+                    Node f = n.Fail;
+                    Node t;
+                    while (f != null && f != _root && !f.Next.TryGetValue(kv.Key, out t)) f = f.Fail;
+                    Node ft;
+                    kv.Value.Fail = (f != null && f.Next.TryGetValue(kv.Key, out ft) && ft != kv.Value) ? ft : _root;
+                    if (kv.Value.Fail != null && kv.Value.Fail.Out != null)
+                    {
+                        if (kv.Value.Out == null) kv.Value.Out = new List<string>();
+                        kv.Value.Out.AddRange(kv.Value.Fail.Out);
                     }
+                    q.Enqueue(kv.Value);
                 }
             }
+        }
+
+        public void Search(string text, ICollection<string> sink)
+        {
+            if (text == null || text.Length == 0) return;
+            Node n = _root;
+            for (int i = 0; i < text.Length; i++)
+            {
+                Node t;
+                Node cur = n;
+                while (cur != _root && !cur.Next.TryGetValue(text[i], out t)) cur = cur.Fail;
+                if (cur.Next.TryGetValue(text[i], out t)) n = t; else n = _root;
+                if (n.Out != null) foreach (string s in n.Out) sink.Add(s);
+            }
+        }
+    }
+
+    public static class Fast
+    {
+        static Aho _patterns = new Aho();
+        static Aho _strings = new Aho();
+        static Aho _fuzzy = new Aho();
+        static Regex _fullwidth;
+        static Regex _ctxName;
+        static Regex _ctxNameNorm;
+        static Regex _ctxAscii;
+
+        static string Norm(string s, bool alt)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new StringBuilder(s.Length);
+            foreach (char ch0 in s)
+            {
+                int c = ch0;
+                if (c >= 0x3040 && c <= 0x30FF) continue;
+                char ch = ch0;
+                if (ch >= 0xFF01 && ch <= 0xFF5E) ch = (char)(ch - 0xFEE0);
+                if (alt) { if (ch == '!') ch = 'u'; }
+                else { if (ch == '@') ch = 'a'; else if (ch == '$') ch = 's'; else if (ch == '!') ch = 'i'; }
+                if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32);
+                if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
+            }
+            string t = sb.ToString();
+            sb.Length = 0;
+            foreach (char ch in t)
+            {
+                switch (ch)
+                {
+                    case '0': sb.Append('o'); break;
+                    case '1': sb.Append('i'); break;
+                    case '3': sb.Append('e'); break;
+                    case '4': sb.Append('a'); break;
+                    case '5': sb.Append('s'); break;
+                    case '7': sb.Append('t'); break;
+                    case '8': sb.Append('b'); break;
+                    case '9': sb.Append('g'); break;
+                    default: sb.Append(ch); break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        public static void Build(string[] patterns, string[] cheatStrings, string[] fuzzy, string[] ctxName, string[] ctxNameNorm, string ctxAscii)
+        {
+            foreach (string p in patterns) if (!string.IsNullOrEmpty(p)) _patterns.Add(p);
+            _patterns.Compile();
+            foreach (string s in cheatStrings) if (!string.IsNullOrEmpty(s)) _strings.Add(s);
+            _strings.Compile();
+            foreach (string f in fuzzy) if (!string.IsNullOrEmpty(f)) _fuzzy.Add(f);
+            _fuzzy.Compile();
+            _fullwidth = new Regex("[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}", RegexOptions.Compiled);
+            if (ctxName != null && ctxName.Length > 0) _ctxName = new Regex(string.Join("|", ctxName), RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            if (ctxNameNorm != null && ctxNameNorm.Length > 0) _ctxNameNorm = new Regex(string.Join("|", ctxNameNorm), RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            if (!string.IsNullOrEmpty(ctxAscii)) _ctxAscii = new Regex(ctxAscii, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        }
+
+        public static List<string> ScanNamePatterns(string name)
+        {
+            var hits = new List<string>();
+            _patterns.Search(name, hits);
             return hits;
+        }
+
+        public static ScanResult ScanEntry(string name, byte[] bytes, bool advanced)
+        {
+            ScanResult r = new ScanResult();
+            string ascii = Encoding.ASCII.GetString(bytes);
+            string utf8 = Encoding.UTF8.GetString(bytes);
+
+            _patterns.Search(ascii, r.PatternHits);
+
+            _strings.Search(ascii, r.StringHits);
+            _strings.Search(utf8, r.StringHits);
+
+            foreach (Match m in _fullwidth.Matches(utf8)) r.Fullwidth.Add(m.Value);
+
+            bool isClass = name.EndsWith(".class");
+            if (advanced && isClass)
+            {
+                bool shape =
+                    ascii.Contains("StringDecoder") || ascii.Contains("[[B") || ascii.Contains("Base64") ||
+                    ascii.Contains("fromBase64String") || ascii.Contains("([BI)Ljava/lang/String;") ||
+                    ascii.Contains("([BB)Ljava/lang/String;") || ascii.Contains("([CI)Ljava/lang/String;") ||
+                    ascii.Contains("java/lang/String") || ascii.Contains("UTF_8");
+                for (int i = 0; i < bytes.Length - 1; i++)
+                {
+                    if (bytes[i] == 0xBC && bytes[i + 1] == 0x08) r.HasByteNewArray = true;
+                    if (bytes[i] == 0xBC && bytes[i + 1] == 0x05) r.HasCharNewArray = true;
+                    if (r.HasByteNewArray && r.HasCharNewArray) break;
+                }
+                bool ctx = false;
+                if (_ctxName != null && _ctxName.IsMatch(name)) ctx = true;
+                if (!ctx && _ctxNameNorm != null)
+                {
+                    string nameNorm = Regex.Replace(name, "[^A-Za-z0-9]+", "");
+                    if (_ctxNameNorm.IsMatch(nameNorm)) ctx = true;
+                }
+                if (!ctx && _ctxAscii != null)
+                {
+                    string asciiNorm = Regex.Replace(ascii, "[^A-Za-z0-9]+", "");
+                    if (_ctxAscii.IsMatch(asciiNorm)) ctx = true;
+                }
+                r.DecoderShape = shape && ctx;
+            }
+
+            var nameHits = new List<string>();
+            _fuzzy.Search(Norm(name, false), nameHits);
+            foreach (string h in nameHits) r.Fuzzy.Add("[path] " + h);
+
+            if (bytes.Length <= 524288)
+            {
+                var contentHits = new List<string>();
+                _fuzzy.Search(Norm(utf8, false), contentHits);
+                if (contentHits.Count == 0 && utf8.IndexOf('!') >= 0)
+                {
+                    _fuzzy.Search(Norm(utf8, true), contentHits);
+                    foreach (string h in contentHits) r.Fuzzy.Add("[alt] " + h);
+                }
+                else
+                {
+                    foreach (string h in contentHits) r.Fuzzy.Add(h);
+                }
+            }
+            return r;
+        }
+
+        public static DecodedResult MatchDecoded(string decoded)
+        {
+            DecodedResult d = new DecodedResult();
+            if (string.IsNullOrEmpty(decoded)) return d;
+            _strings.Search(decoded, d.Exact);
+            _fuzzy.Search(Norm(decoded, false), d.Fuzzy);
+            if (d.Fuzzy.Count == 0 && decoded.IndexOf('!') >= 0)
+            {
+                _fuzzy.Search(Norm(decoded, true), d.FuzzyAlt);
+            }
+            return d;
         }
     }
 }
 '@
-    [CheatScan.Scanner]::Build($cheatKeywordTokens)
+    [NettyScan.Fast]::Build($suspiciousPatterns, $cheatStrings, $cheatKeywordTokens, $script:CheatCtxName, $script:CheatCtxNameNorm, $script:CheatCtxAscii)
+    $script:FastReady = $true
 } catch {
-    $script:UseCsharpScanner = $false
+    $script:FastReady = $false
+    $script:FastError = $_.Exception.Message
 }
 
 # Fallback for systems where Add-Type is blocked (e.g. Constrained Language Mode):
@@ -550,7 +740,6 @@ function Find-KeywordHits {
     param([string]$Norm)
     $hits = [System.Collections.Generic.List[string]]::new()
     if ([string]::IsNullOrEmpty($Norm)) { return $hits }
-    if ($script:UseCsharpScanner) { return [CheatScan.Scanner]::Scan($Norm) }
     if ($cheatKeywordFallbackRegex) {
         foreach ($m in $cheatKeywordFallbackRegex.Matches($Norm)) { [void]$hits.Add($m.Value) }
         return $hits
@@ -813,7 +1002,7 @@ function Get-ObfuscatedByteArrayStrings {
 }
 
 function Invoke-ModScan {
-    param([string]$FilePath)
+    param([string]$FilePath, [int]$Depth = 0)
 
     $foundPatterns  = [System.Collections.Generic.HashSet[string]]::new()
     $foundStrings   = [System.Collections.Generic.HashSet[string]]::new()
@@ -823,6 +1012,72 @@ function Invoke-ModScan {
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
 
+        if ($script:FastReady) {
+            # ---- fast path: Aho-Corasick + recursive nested-jar descent ----
+            $entryNames = [System.Collections.Generic.List[string]]::new()
+            $pending    = [System.Collections.Generic.List[object]]::new()
+
+            foreach ($e in $archive.Entries) {
+                $entryNames.Add($e.FullName)
+                if ($e.FullName -match '\.(class|json)$' -or $e.FullName -match 'MANIFEST\.MF') { $pending.Add($e) }
+            }
+
+            foreach ($en in $entryNames) {
+                foreach ($hit in [NettyScan.Fast]::ScanNamePatterns($en)) { [void]$foundPatterns.Add($hit) }
+            }
+
+            foreach ($e in $pending) {
+                try {
+                    $st = $e.Open(); $ms2 = New-Object System.IO.MemoryStream; $st.CopyTo($ms2); $st.Close()
+                    $bytes = $ms2.ToArray(); $ms2.Dispose()
+                    $r = [NettyScan.Fast]::ScanEntry($e.FullName, $bytes, [bool]$script:EnableAdvancedStringDecode)
+                    foreach ($x in $r.PatternHits)  { [void]$foundPatterns.Add($x) }
+                    foreach ($x in $r.StringHits)   { [void]$foundStrings.Add($x) }
+                    foreach ($x in $r.Fullwidth)    { [void]$foundFullwidth.Add($x) }
+                    foreach ($x in $r.Fuzzy)        { [void]$foundFragments.Add($x) }
+                    if ($r.DecoderShape -and ($r.HasByteNewArray -or $r.HasCharNewArray)) {
+                        foreach ($ds in (Get-ObfuscatedByteArrayStrings -Bytes $bytes)) {
+                            $dm = [NettyScan.Fast]::MatchDecoded($ds)
+                            foreach ($x in $dm.Exact)    { [void]$foundStrings.Add($x) }
+                            foreach ($x in $dm.Fuzzy)    { [void]$foundFragments.Add("[deobf] " + $x) }
+                            foreach ($x in $dm.FuzzyAlt) { [void]$foundFragments.Add("[deobf-alt] " + $x) }
+                        }
+                    }
+                } catch { }
+            }
+
+            if ($Depth -lt 3) {
+                foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
+                    try {
+                        $msN = New-Object System.IO.MemoryStream
+                        $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
+                        $tmpJar = [System.IO.Path]::GetTempFileName()
+                        $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
+                        $sub = Invoke-ModScan -FilePath $tmpJar -Depth ($Depth + 1)
+                        Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
+                        foreach ($x in $sub.Patterns)  { [void]$foundPatterns.Add("[nested] " + $x) }
+                        foreach ($x in $sub.Strings)   { [void]$foundStrings.Add("[nested] " + $x) }
+                        foreach ($x in $sub.Fragments) { [void]$foundFragments.Add("[nested] " + $x) }
+                        foreach ($x in $sub.Fullwidth) { [void]$foundFullwidth.Add($x) }
+                    } catch { }
+                }
+            }
+
+            # weak-fragment damping: short tokens (<=7 chars) only count when a strong
+            # token (>=8) is present in the same jar, or 3+ distinct weak tokens occur.
+            if ($foundFragments.Count -gt 0) {
+                $bare = @($foundFragments | ForEach-Object { ($_ -replace '^\[[^\]]+\]\s*', '') -replace '^\[nested\]\s*', '' })
+                $hasStrong = @($bare | Where-Object { $_.Length -ge 8 }).Count -gt 0
+                if (-not $hasStrong) {
+                    $distinctWeak = @($bare | Sort-Object -Unique)
+                    if ($distinctWeak.Count -lt 3) {
+                        $foundFragments.Clear()
+                    }
+                }
+            }
+        }
+
+        if (-not $script:FastReady) {
         foreach ($entry in $archive.Entries) {
             foreach ($m in $patternRegex.Matches($entry.FullName)) {
                 [void]$foundPatterns.Add($m.Value)
@@ -883,9 +1138,9 @@ function Invoke-ModScan {
                             $ascii.Contains("UTF_8")
 
                         $hasCheatContext =
-                            $name -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
-                            $nameNormalized -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
-                            $asciiNormalized -match "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|TokenLogger|TokenGrabber|SessionStealer|DiscordToken|Webhook|RemoteAccess|ReverseShell|Backdoor|KeyLogger|C2Server|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
+                            $name -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
+                            $nameNormalized -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
+                            $asciiNormalized -match "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
 
                         $hasAdvancedDecodeContext = $hasDecoderShape -and $hasCheatContext
                     }
@@ -950,6 +1205,8 @@ function Invoke-ModScan {
         }
 
         foreach ($ia in $innerArchives) { try { $ia.Dispose() } catch { } }
+        }
+
         $archive.Dispose()
     } catch { }
 
@@ -989,12 +1246,26 @@ function Invoke-ModScan {
 }
 
 function Invoke-ObfuscationScan {
-    param([string]$FilePath)
+    param([string]$FilePath, [int]$Depth = 0)
 
     $flags = [System.Collections.Generic.List[string]]::new()
 
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+
+        if ($script:FastReady -and $Depth -eq 0) {
+            foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
+                try {
+                    $msN = New-Object System.IO.MemoryStream
+                    $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
+                    $tmpJar = [System.IO.Path]::GetTempFileName()
+                    $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
+                    $subFlags = Invoke-ObfuscationScan -FilePath $tmpJar -Depth 1
+                    Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
+                    foreach ($sf in $subFlags) { $flags.Add("[nested] " + $sf) }
+                } catch { }
+            }
+        }
 
         $totalClass    = 0
         $numericCount  = 0
@@ -1139,6 +1410,20 @@ function Invoke-BypassScan {
 
     try {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+
+        if ($script:FastReady -and $Depth -eq 0) {
+            foreach ($nj in ($zip.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
+                try {
+                    $msN = New-Object System.IO.MemoryStream
+                    $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
+                    $tmpJar = [System.IO.Path]::GetTempFileName()
+                    $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
+                    $subFlags = Invoke-ObfuscationScan -FilePath $tmpJar -Depth 1
+                    Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
+                    foreach ($sf in $subFlags) { $flags.Add("[nested] " + $sf) }
+                } catch { }
+            }
+        }
 
         $nestedJars   = @($zip.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })
         $outerClasses = @($zip.Entries | Where-Object { $_.FullName -match "\.class$" })
