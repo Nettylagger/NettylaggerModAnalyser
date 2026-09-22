@@ -7,9 +7,15 @@ chcp 65001 | Out-Null
 Clear-Host
 
 function Write-HiddenBadge {
-    param([System.IO.FileSystemInfo]$File)
-    if ($File.Attributes -band [System.IO.FileAttributes]::Hidden) {
+    param($File)
+    $attributes = if ($File.Attributes -ne $null) { $File.Attributes } else { [System.IO.FileAttributes]::Normal }
+    $isHidden = ($attributes -band [System.IO.FileAttributes]::Hidden) -or $File.Hidden
+    $isSystem = ($attributes -band [System.IO.FileAttributes]::System) -or $File.System
+    if ($isHidden) {
         Write-Host " [MOD IS HIDDEN]" -ForegroundColor Yellow -NoNewline
+    }
+    if ($isSystem) {
+        Write-Host " [SYSTEM FILE]" -ForegroundColor Magenta -NoNewline
     }
 }
 
@@ -79,16 +85,9 @@ if (-not (Test-Path $modsPath -PathType Container)) {
     exit 1
 }
 
-Write-Host "Scan mode:" -ForegroundColor DarkYellow
-Write-Host "  [1] Normal   - fast string/pattern scan" -ForegroundColor Gray
-Write-Host "  [2] Advanced - includes deobfuscated string decoding" -ForegroundColor Gray
-$scanMode = Read-Host "MODE"
-$script:EnableAdvancedStringDecode = ($scanMode -eq "2" -or $scanMode -match "^(?i)advanced|deep|yes|y$")
-if ($script:EnableAdvancedStringDecode) {
-    Write-Host "🔬 Advanced string deobfuscation enabled" -ForegroundColor DarkGray
-} else {
-    Write-Host "⚡ Normal scan mode enabled" -ForegroundColor DarkGray
-}
+# Normal scan is the default. Advanced/deep string decoding is disabled.
+$script:EnableAdvancedStringDecode = $false
+Write-Host "⚡ Normal scan enabled — strings, patterns and nested JARs are checked" -ForegroundColor DarkGray
 Write-Host
 
 Write-Host "📁 Scanning directory: $modsPath" -ForegroundColor Yellow
@@ -111,10 +110,6 @@ if ($mcProcess) {
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-$script:CheatCtxName      = @("Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher")
-$script:CheatCtxNameNorm  = @("Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher")
-$script:CheatCtxAscii     = "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
 
 $suspiciousPatterns = @(
     "AimAssist", "AnchorTweaks", "AutoAnchor", "AutoCrystal",
@@ -254,8 +249,7 @@ $cheatStrings = @(
     "AntiWeb", "AutoWeb", "Anti_trap", "Ａｎｔｉ Ｗｅｂ",
     "ＡｕｔｏＷｅｂ", "Ｐｌａｃｅｓ Ｗｅｂｓ Ｏｎ Ｅｎｅｍｉｅｓ", "lvstrng", "dqrkis",
     "selfdestruct", "self destruct", "WalksyCrystalOptimizerMod", "WalksyOptimizer",
-    "WalskyOptimizer", "Ｗａｌｋｓｙ Ｏｐｔｉｍｉｚｅｒ", "autoCrystalPlaceClock", "AutoFirework",
-    "ElytraSwap", "FastXP", "FastExp", "NoJumpDelay",
+    "WalskyOptimizer", "Ｗａｌｋｓｙ Ｏｐｔｉｍｉｚｅｒ", "autoCrystalPlaceClock",    "AutoFirework", "ElytraSwap", "FastXP", "FastExp", "NoJumpDelay",
     "ＥｌｙｔｒａＳｗａｐ", "Ｅｌｙｔｒａ Ｓｗａｐ", "PackSpoof", "Antiknockback",
     "catlean", "AuthBypass", "obfuscatedAuth", "LicenseCheckMixin",
     "BaseFinder", "invsee", "ItemExploit", "FreezePlayer",
@@ -358,7 +352,9 @@ $cheatStrings = @(
     "AACBypass", "VerusDisabler", "IntaveBypass", "WatchdogBypass",
     "PacketMine", "PacketWalk", "PacketSneak", "PacketCancel",
     "PacketDupe", "PacketSpam", "SelfDestruct", "HideClient",
-    "StashFinder", "TrailFinder", "imgui.binding",
+    "SessionStealer", "TokenLogger", "TokenGrabber", "DiscordToken",
+    "RemoteAccess", "ReverseShell", "C2Server", "Backdoor",
+    "KeyLogger", "StashFinder", "TrailFinder", "imgui.binding",
     "JNativeHook", "GlobalScreen", "NativeKeyListener", "client-refmap.json",
     "cheat-refmap.json", "aHR0cDovL2FwaS5ub3ZhY2xpZW50LmxvbC93ZWJob29rLnR4dA==", "meteordevelopment", "cc/novoline",
     "com/alan/clients", "club/maxstats", "wtf/moonlight", "me/zeroeightsix/kami",
@@ -459,295 +455,14 @@ $cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.Stri
 foreach ($s in $cheatStrings) { [void]$cheatStringSet.Add($s) }
 
 function Get-NormalizedCheatText {
-    param([string]$Text, [switch]$AltLeet)
+    param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return "" }
-    $t = $Text.ToLower()
-    $t = $t -replace '[\u3040-\u30FF]', ''
-    if ($AltLeet) {
-        $t = $t.Replace('!','u')
-    } else {
-        $t = $t.Replace('@','a').Replace('$','s').Replace('!','i')
-    }
+    $t = $Text.ToLowerInvariant()
     if ($t -match '[\uFF01-\uFF5E]') {
         $t = [regex]::Replace($t, '[\uFF01-\uFF5E]', { param($m) [string][char]([int][char]$m.Value - 0xFEE0) })
     }
     $t = $t -replace '[^a-z0-9]', ''
-    $t = $t.Replace('0','o').Replace('1','i').Replace('3','e').Replace('4','a').Replace('5','s').Replace('7','t').Replace('8','b').Replace('9','g')
-    return $t
-}
-
-# Fuzzy keyword families are DERIVED from the existing $cheatStrings list at startup.
-# Nothing hand-added: every token is the canonical form of a string from the original list.
-$derivedKeywordSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($s in $cheatStrings) {
-    if ([string]::IsNullOrWhiteSpace($s)) { continue }
-    $normToken = Get-NormalizedCheatText -Text $s
-    if ($normToken -match '^[a-z]{5,32}$') { [void]$derivedKeywordSet.Add($normToken) }
-}
-$cheatKeywordTokens = @($derivedKeywordSet)
-
-# Fast multi-pattern scanner: Aho-Corasick automaton, ONE pass over each file
-# matches all pattern lists simultaneously (~50x faster than per-string Contains).
-$script:FastReady = $false
-try {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Text.RegularExpressions;
-
-namespace NettyScan
-{
-    public class ScanResult
-    {
-        public List<string> PatternHits = new List<string>();
-        public List<string> StringHits = new List<string>();
-        public List<string> Fullwidth = new List<string>();
-        public List<string> Fuzzy = new List<string>();
-        public bool DecoderShape;
-        public bool HasByteNewArray;
-        public bool HasCharNewArray;
-    }
-
-    public class DecodedResult
-    {
-        public List<string> Exact = new List<string>();
-        public List<string> Fuzzy = new List<string>();
-        public List<string> FuzzyAlt = new List<string>();
-    }
-
-    internal class Aho
-    {
-        private class Node { public Dictionary<char, Node> Next = new Dictionary<char, Node>(); public Node Fail; public List<string> Out; }
-        private Node _root = new Node();
-
-        public void Add(string s)
-        {
-            Node n = _root;
-            foreach (char c in s)
-            {
-                Node t;
-                if (!n.Next.TryGetValue(c, out t)) { t = new Node(); n.Next[c] = t; }
-                n = t;
-            }
-            if (n.Out == null) n.Out = new List<string>();
-            if (!n.Out.Contains(s)) n.Out.Add(s);
-        }
-
-        public void Compile()
-        {
-            var q = new Queue<Node>();
-            foreach (var kv in _root.Next) { kv.Value.Fail = _root; q.Enqueue(kv.Value); }
-            while (q.Count > 0)
-            {
-                Node n = q.Dequeue();
-                foreach (var kv in n.Next)
-                {
-                    Node f = n.Fail;
-                    Node t;
-                    while (f != null && f != _root && !f.Next.TryGetValue(kv.Key, out t)) f = f.Fail;
-                    Node ft;
-                    kv.Value.Fail = (f != null && f.Next.TryGetValue(kv.Key, out ft) && ft != kv.Value) ? ft : _root;
-                    if (kv.Value.Fail != null && kv.Value.Fail.Out != null)
-                    {
-                        if (kv.Value.Out == null) kv.Value.Out = new List<string>();
-                        kv.Value.Out.AddRange(kv.Value.Fail.Out);
-                    }
-                    q.Enqueue(kv.Value);
-                }
-            }
-        }
-
-        public void Search(string text, ICollection<string> sink)
-        {
-            if (text == null || text.Length == 0) return;
-            Node n = _root;
-            for (int i = 0; i < text.Length; i++)
-            {
-                Node t;
-                Node cur = n;
-                while (cur != _root && !cur.Next.TryGetValue(text[i], out t)) cur = cur.Fail;
-                if (cur.Next.TryGetValue(text[i], out t)) n = t; else n = _root;
-                if (n.Out != null) foreach (string s in n.Out) sink.Add(s);
-            }
-        }
-    }
-
-    public static class Fast
-    {
-        static Aho _patterns = new Aho();
-        static Aho _strings = new Aho();
-        static Aho _fuzzy = new Aho();
-        static Regex _fullwidth;
-        static Regex _ctxName;
-        static Regex _ctxNameNorm;
-        static Regex _ctxAscii;
-
-        static string Norm(string s, bool alt)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var sb = new StringBuilder(s.Length);
-            foreach (char ch0 in s)
-            {
-                int c = ch0;
-                if (c >= 0x3040 && c <= 0x30FF) continue;
-                char ch = ch0;
-                if (ch >= 0xFF01 && ch <= 0xFF5E) ch = (char)(ch - 0xFEE0);
-                if (alt) { if (ch == '!') ch = 'u'; }
-                else { if (ch == '@') ch = 'a'; else if (ch == '$') ch = 's'; else if (ch == '!') ch = 'i'; }
-                if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32);
-                if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
-            }
-            string t = sb.ToString();
-            sb.Length = 0;
-            foreach (char ch in t)
-            {
-                switch (ch)
-                {
-                    case '0': sb.Append('o'); break;
-                    case '1': sb.Append('i'); break;
-                    case '3': sb.Append('e'); break;
-                    case '4': sb.Append('a'); break;
-                    case '5': sb.Append('s'); break;
-                    case '7': sb.Append('t'); break;
-                    case '8': sb.Append('b'); break;
-                    case '9': sb.Append('g'); break;
-                    default: sb.Append(ch); break;
-                }
-            }
-            return sb.ToString();
-        }
-
-        public static void Build(string[] patterns, string[] cheatStrings, string[] fuzzy, string[] ctxName, string[] ctxNameNorm, string ctxAscii)
-        {
-            foreach (string p in patterns) if (!string.IsNullOrEmpty(p)) _patterns.Add(p);
-            _patterns.Compile();
-            foreach (string s in cheatStrings) if (!string.IsNullOrEmpty(s)) _strings.Add(s);
-            _strings.Compile();
-            foreach (string f in fuzzy) if (!string.IsNullOrEmpty(f)) _fuzzy.Add(f);
-            _fuzzy.Compile();
-            _fullwidth = new Regex("[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}", RegexOptions.Compiled);
-            if (ctxName != null && ctxName.Length > 0) _ctxName = new Regex(string.Join("|", ctxName), RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            if (ctxNameNorm != null && ctxNameNorm.Length > 0) _ctxNameNorm = new Regex(string.Join("|", ctxNameNorm), RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            if (!string.IsNullOrEmpty(ctxAscii)) _ctxAscii = new Regex(ctxAscii, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        }
-
-        public static List<string> ScanNamePatterns(string name)
-        {
-            var hits = new List<string>();
-            _patterns.Search(name, hits);
-            return hits;
-        }
-
-        public static ScanResult ScanEntry(string name, byte[] bytes, bool advanced)
-        {
-            ScanResult r = new ScanResult();
-            string ascii = Encoding.ASCII.GetString(bytes);
-            string utf8 = Encoding.UTF8.GetString(bytes);
-
-            _patterns.Search(ascii, r.PatternHits);
-
-            _strings.Search(ascii, r.StringHits);
-            _strings.Search(utf8, r.StringHits);
-
-            foreach (Match m in _fullwidth.Matches(utf8)) r.Fullwidth.Add(m.Value);
-
-            bool isClass = name.EndsWith(".class");
-            if (advanced && isClass)
-            {
-                bool shape =
-                    ascii.Contains("StringDecoder") || ascii.Contains("[[B") || ascii.Contains("Base64") ||
-                    ascii.Contains("fromBase64String") || ascii.Contains("([BI)Ljava/lang/String;") ||
-                    ascii.Contains("([BB)Ljava/lang/String;") || ascii.Contains("([CI)Ljava/lang/String;") ||
-                    ascii.Contains("java/lang/String") || ascii.Contains("UTF_8");
-                for (int i = 0; i < bytes.Length - 1; i++)
-                {
-                    if (bytes[i] == 0xBC && bytes[i + 1] == 0x08) r.HasByteNewArray = true;
-                    if (bytes[i] == 0xBC && bytes[i + 1] == 0x05) r.HasCharNewArray = true;
-                    if (r.HasByteNewArray && r.HasCharNewArray) break;
-                }
-                bool ctx = false;
-                if (_ctxName != null && _ctxName.IsMatch(name)) ctx = true;
-                if (!ctx && _ctxNameNorm != null)
-                {
-                    string nameNorm = Regex.Replace(name, "[^A-Za-z0-9]+", "");
-                    if (_ctxNameNorm.IsMatch(nameNorm)) ctx = true;
-                }
-                if (!ctx && _ctxAscii != null)
-                {
-                    string asciiNorm = Regex.Replace(ascii, "[^A-Za-z0-9]+", "");
-                    if (_ctxAscii.IsMatch(asciiNorm)) ctx = true;
-                }
-                r.DecoderShape = shape && ctx;
-            }
-
-            var nameHits = new List<string>();
-            _fuzzy.Search(Norm(name, false), nameHits);
-            foreach (string h in nameHits) r.Fuzzy.Add("[path] " + h);
-
-            if (bytes.Length <= 524288)
-            {
-                var contentHits = new List<string>();
-                _fuzzy.Search(Norm(utf8, false), contentHits);
-                if (contentHits.Count == 0 && utf8.IndexOf('!') >= 0)
-                {
-                    _fuzzy.Search(Norm(utf8, true), contentHits);
-                    foreach (string h in contentHits) r.Fuzzy.Add("[alt] " + h);
-                }
-                else
-                {
-                    foreach (string h in contentHits) r.Fuzzy.Add(h);
-                }
-            }
-            return r;
-        }
-
-        public static DecodedResult MatchDecoded(string decoded)
-        {
-            DecodedResult d = new DecodedResult();
-            if (string.IsNullOrEmpty(decoded)) return d;
-            _strings.Search(decoded, d.Exact);
-            _fuzzy.Search(Norm(decoded, false), d.Fuzzy);
-            if (d.Fuzzy.Count == 0 && decoded.IndexOf('!') >= 0)
-            {
-                _fuzzy.Search(Norm(decoded, true), d.FuzzyAlt);
-            }
-            return d;
-        }
-    }
-}
-'@
-    [NettyScan.Fast]::Build($suspiciousPatterns, $cheatStrings, $cheatKeywordTokens, $script:CheatCtxName, $script:CheatCtxNameNorm, $script:CheatCtxAscii)
-    $script:FastReady = $true
-} catch {
-    $script:FastReady = $false
-    $script:FastError = $_.Exception.Message
-}
-
-# Fallback for systems where Add-Type is blocked (e.g. Constrained Language Mode):
-# one compiled alternation regex, longest tokens first so specific families win.
-$cheatKeywordFallbackRegex = $null
-if (-not $script:UseCsharpScanner) {
-    try {
-        $fallbackPattern = ($cheatKeywordTokens | Sort-Object Length -Descending | ForEach-Object { [regex]::Escape($_) }) -join '|'
-        if ($fallbackPattern) {
-            $cheatKeywordFallbackRegex = [regex]::new('(' + $fallbackPattern + ')', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-        }
-    } catch { }
-}
-
-function Find-KeywordHits {
-    param([string]$Norm)
-    $hits = [System.Collections.Generic.List[string]]::new()
-    if ([string]::IsNullOrEmpty($Norm)) { return $hits }
-    if ($cheatKeywordFallbackRegex) {
-        foreach ($m in $cheatKeywordFallbackRegex.Matches($Norm)) { [void]$hits.Add($m.Value) }
-        return $hits
-    }
-    foreach ($kw in $cheatKeywordTokens) {
-        if ($Norm.Contains($kw)) { [void]$hits.Add($kw) }
-    }
-    return $hits
+    return $t.Replace('0','o').Replace('1','i').Replace('3','e').Replace('4','a').Replace('5','s').Replace('7','t').Replace('8','b').Replace('9','g')
 }
 
 function Get-FileSHA1 {
@@ -782,14 +497,9 @@ function Get-DownloadSource {
 }
 
 function Format-DownloadCount {
-    param([object]$Count)
-    if ($null -eq $Count) { return $null }
-    try { $Count = [double]$Count } catch { return $null }
-    if ($Count -lt 0) { return $null }
-    if ($Count -ge 1000000000) { return ("{0:N1}B" -f ($Count / 1000000000)) }
-    if ($Count -ge 1000000)    { return ("{0:N1}M" -f ($Count / 1000000)) }
-    if ($Count -ge 1000)       { return ("{0:N1}K" -f ($Count / 1000)) }
-    return "$Count"
+    param($Count)
+    if ($null -eq $Count -or "$Count" -eq "") { return "unavailable" }
+    try { return ([long]$Count).ToString("N0", [Globalization.CultureInfo]::InvariantCulture) } catch { return "$Count" }
 }
 
 function Query-Modrinth {
@@ -798,10 +508,56 @@ function Query-Modrinth {
         $versionInfo = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/version_file/$Hash" -Method Get -UseBasicParsing -ErrorAction Stop
         if ($versionInfo.project_id) {
             $projectInfo = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/project/$($versionInfo.project_id)" -Method Get -UseBasicParsing -ErrorAction Stop
-            return @{ Name = $projectInfo.title; Slug = $projectInfo.slug; Downloads = $projectInfo.downloads }
+            return @{ Name = $projectInfo.title; Slug = $projectInfo.slug; Downloads = $projectInfo.downloads; VerificationSource = "Modrinth" }
         }
     } catch { }
-    return @{ Name = ""; Slug = ""; Downloads = $null }
+    return @{ Name = ""; Slug = ""; Downloads = $null; VerificationSource = "" }
+}
+
+function Query-CurseForge {
+    param([string]$Hash)
+
+    # curse.tools exposes the CurseForge fingerprint lookup without requiring a private API key.
+    $uris = @(
+        "https://api.curse.tools/v1/fingerprints/$Hash",
+        "https://api.curse.tools/v1/fingerprint/$Hash"
+    )
+    foreach ($uri in $uris) {
+        try {
+            $result = Invoke-RestMethod -Uri $uri -Method Get -UseBasicParsing -UserAgent "NettyModAnalyser/1.0" -TimeoutSec 20 -ErrorAction Stop
+            $matches = @($result.data)
+            if ($matches.Count -eq 0) { $matches = @($result) }
+            foreach ($match in $matches) {
+                $mod = if ($match.mod) { $match.mod } elseif ($match.project) { $match.project } else { $match }
+                $file = if ($match.file) { $match.file } else { $match }
+                $name = if ($mod.name) { $mod.name } elseif ($mod.title) { $mod.title } elseif ($match.name) { $match.name } else { "" }
+                if (-not $name) { continue }
+                $downloads = $mod.downloadCount
+                if ($null -eq $downloads) { $downloads = $mod.downloads }
+                if ($null -eq $downloads) { $downloads = $match.downloadCount }
+                if ($null -eq $downloads) { $downloads = $match.downloads }
+                return @{ Name = $name; Downloads = $downloads; VerificationSource = "CurseForge" }
+            }
+        } catch { }
+    }
+    return @{ Name = ""; Downloads = $null; VerificationSource = "" }
+}
+
+function Get-KnownNestedCheatJars {
+    param([string]$FilePath)
+    $hits = [System.Collections.Generic.List[string]]::new()
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+        foreach ($entry in $zip.Entries) {
+            $name = [System.IO.Path]::GetFileName($entry.FullName)
+            if ($entry.FullName -match "(?i)^META-INF/jars/.+\.jar$" -and
+                $name -match "(?i)^cloth[-_ ]?basic[-_ ]?math\.jar$") {
+                $hits.Add($name)
+            }
+        }
+        $zip.Dispose()
+    } catch { }
+    return $hits
 }
 
 function Query-Megabase {
@@ -1002,127 +758,15 @@ function Get-ObfuscatedByteArrayStrings {
 }
 
 function Invoke-ModScan {
-    param([string]$FilePath, [int]$Depth = 0)
+    param([string]$FilePath)
 
     $foundPatterns  = [System.Collections.Generic.HashSet[string]]::new()
     $foundStrings   = [System.Collections.Generic.HashSet[string]]::new()
     $foundFullwidth = [System.Collections.Generic.HashSet[string]]::new()
-    $foundFragments = [System.Collections.Generic.HashSet[string]]::new()
 
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
 
-        if ($script:FastReady) {
-            # ---- fast path: Aho-Corasick + recursive nested-jar descent ----
-            $entryNames = [System.Collections.Generic.List[string]]::new()
-            $pending    = [System.Collections.Generic.List[object]]::new()
-
-            foreach ($e in $archive.Entries) {
-                $entryNames.Add($e.FullName)
-                if ($e.FullName -match '\.(class|json)$' -or $e.FullName -match 'MANIFEST\.MF') { $pending.Add($e) }
-            }
-
-            foreach ($en in $entryNames) {
-                foreach ($hit in [NettyScan.Fast]::ScanNamePatterns($en)) { [void]$foundPatterns.Add($hit) }
-            }
-
-            foreach ($e in $pending) {
-                try {
-                    $st = $e.Open(); $ms2 = New-Object System.IO.MemoryStream; $st.CopyTo($ms2); $st.Close()
-                    $bytes = $ms2.ToArray(); $ms2.Dispose()
-                    $r = [NettyScan.Fast]::ScanEntry($e.FullName, $bytes, [bool]$script:EnableAdvancedStringDecode)
-                    foreach ($x in $r.PatternHits)  { [void]$foundPatterns.Add($x) }
-                    foreach ($x in $r.StringHits)   { [void]$foundStrings.Add($x) }
-                    foreach ($x in $r.Fullwidth)    { [void]$foundFullwidth.Add($x) }
-                    foreach ($x in $r.Fuzzy)        { [void]$foundFragments.Add($x) }
-                    if ($r.DecoderShape -and ($r.HasByteNewArray -or $r.HasCharNewArray)) {
-                        foreach ($ds in (Get-ObfuscatedByteArrayStrings -Bytes $bytes)) {
-                            $dm = [NettyScan.Fast]::MatchDecoded($ds)
-                            foreach ($x in $dm.Exact)    { [void]$foundStrings.Add($x) }
-                            foreach ($x in $dm.Fuzzy)    { [void]$foundFragments.Add("[deobf] " + $x) }
-                            foreach ($x in $dm.FuzzyAlt) { [void]$foundFragments.Add("[deobf-alt] " + $x) }
-                        }
-                    }
-                } catch { }
-            }
-
-            if ($Depth -lt 3) {
-                foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
-                    try {
-                        $msN = New-Object System.IO.MemoryStream
-                        $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
-                        $tmpJar = [System.IO.Path]::GetTempFileName()
-                        $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
-                        $sub = Invoke-ModScan -FilePath $tmpJar -Depth ($Depth + 1)
-                        Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
-                        foreach ($x in $sub.Patterns)  { [void]$foundPatterns.Add("[nested] " + $x) }
-                        foreach ($x in $sub.Strings)   { [void]$foundStrings.Add("[nested] " + $x) }
-                        foreach ($x in $sub.Fragments) { [void]$foundFragments.Add("[nested] " + $x) }
-                        foreach ($x in $sub.Fullwidth) { [void]$foundFullwidth.Add($x) }
-                    } catch { }
-                }
-            }
-
-            # fragment damping: keep only evidence-backed tokens — deobfuscated origin,
-            # strong path hit (>=8 chars), or 3+ distinct weak tokens in the same jar
-            # (group effect). Content-only tokens never count alone.
-            # Substring-redundant tokens (e.g. "hover" inside "hovertotem") are dropped.
-            if ($foundFragments.Count -gt 0) {
-                $stats = @{}
-                foreach ($f in $foundFragments) {
-                    $rest = $f; $isPath = $false; $isDeobf = $false
-                    while ($true) {
-                        if ($rest.StartsWith("[nested] "))    { $rest = $rest.Substring(9); continue }
-                        if ($rest.StartsWith("[path] "))      { $isPath = $true;  $rest = $rest.Substring(7); continue }
-                        if ($rest.StartsWith("[deobf-alt] ")) { $isDeobf = $true; $rest = $rest.Substring(12); continue }
-                        if ($rest.StartsWith("[deobf] "))     { $isDeobf = $true; $rest = $rest.Substring(8); continue }
-                        if ($rest.StartsWith("[alt] "))       { $rest = $rest.Substring(6); continue }
-                        break
-                    }
-                    $rest = $rest.Trim()
-                    if ([string]::IsNullOrWhiteSpace($rest)) { continue }
-                    if (-not $stats.ContainsKey($rest)) { $stats[$rest] = @{ Path = $false; Deobf = $false } }
-                    if ($isPath -and $rest.Length -ge 8) { $stats[$rest].Path = $true }
-                    if ($isDeobf) { $stats[$rest].Deobf = $true }
-                }
-
-                $distinct = @($stats.Keys)
-                $weak = @($distinct | Where-Object { -not $stats[$_].Deobf -and -not $stats[$_].Path })
-                $keep = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-                foreach ($t in $distinct) {
-                    $s = $stats[$t]
-                    if ($s.Deobf -or $s.Path) { [void]$keep.Add($t) }
-                }
-                if ($weak.Count -ge 3) { foreach ($t in $weak) { [void]$keep.Add($t) } }
-                foreach ($t in @($keep)) {
-                    foreach ($other in $distinct) {
-                        if ($other.Length -gt $t.Length -and $other.Contains($t)) {
-                            $so = $stats[$other]
-                            if ($so.Deobf -or $so.Path -or $keep.Contains($other)) {
-                                [void]$keep.Remove($t)
-                            }
-                            break
-                        }
-                    }
-                }
-
-                $final = [System.Collections.Generic.HashSet[string]]::new()
-                foreach ($t in $keep) {
-                    $s = $stats[$t]
-                    $prefix = ""
-                    if ($s.Deobf) { $prefix = "[deobf] " } elseif ($s.Path) { $prefix = "[path] " }
-                    [void]$final.Add($prefix + $t)
-                }
-                if ($final.Count -eq 1) {
-                    $only = @($final)[0] -replace '^\[[^\]]+\] ', ''
-                    if ($only.Length -lt 10 -and -not @($final)[0].StartsWith("[deobf] ")) { $final.Clear() }
-                }
-                $foundFragments.Clear()
-                foreach ($t in $final) { [void]$foundFragments.Add($t) }
-            }
-        }
-
-        if (-not $script:FastReady) {
         foreach ($entry in $archive.Entries) {
             foreach ($m in $patternRegex.Matches($entry.FullName)) {
                 [void]$foundPatterns.Add($m.Value)
@@ -1135,6 +779,10 @@ function Invoke-ModScan {
         foreach ($e in $archive.Entries) { $allEntries.Add($e) }
 
         foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
+            $nestedName = [System.IO.Path]::GetFileName($nj.FullName)
+            if ($nestedName -match '(?i)^cloth[-_ ]?basic[-_ ]?math\.jar$') {
+                [void]$foundPatterns.Add("Nested cheat JAR: $nestedName")
+            }
             try {
                 $ns = $nj.Open()
                 $ms = New-Object System.IO.MemoryStream
@@ -1183,9 +831,9 @@ function Invoke-ModScan {
                             $ascii.Contains("UTF_8")
 
                         $hasCheatContext =
-                            $name -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
-                            $nameNormalized -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
-                            $asciiNormalized -match "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
+                            $name -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
+                            $nameNormalized -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
+                            $asciiNormalized -match "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|TokenLogger|TokenGrabber|SessionStealer|DiscordToken|Webhook|RemoteAccess|ReverseShell|Backdoor|KeyLogger|C2Server|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
 
                         $hasAdvancedDecodeContext = $hasDecoderShape -and $hasCheatContext
                     }
@@ -1208,22 +856,25 @@ function Invoke-ModScan {
 
                     if ($script:EnableAdvancedStringDecode -and
                         $name -match '\.class$' -and
-                        (($hasByteNewArray -or $hasCharNewArray) -and
-                        $hasAdvancedDecodeContext)) {
+                        ($hasByteNewArray -or $hasCharNewArray)) {
                         $decodedStrings = Get-ObfuscatedByteArrayStrings -Bytes $bytes
                         foreach ($decoded in $decodedStrings) {
+                            $decodedHit = $false
                             foreach ($s in $cheatStringSet) {
                                 if ($decoded.Contains($s)) {
-                                    [void]$foundStrings.Add($s)
+                                    [void]$foundStrings.Add("[obfuscated] $decoded")
+                                    $decodedHit = $true
+                                    break
                                 }
                             }
-                            $normDecoded = Get-NormalizedCheatText -Text $decoded
-                            $deobfHits = @(Find-KeywordHits -Norm $normDecoded)
-                            if ($deobfHits.Count -gt 0) {
-                                foreach ($hit in $deobfHits) { [void]$foundFragments.Add("[deobf] " + $hit) }
-                            } elseif ($decoded.Contains('!')) {
-                                $normDecodedU = Get-NormalizedCheatText -Text $decoded -AltLeet
-                                foreach ($hit in (Find-KeywordHits -Norm $normDecodedU)) { [void]$foundFragments.Add("[deobf-alt] " + $hit) }
+
+                            # Also flag decoded module/config strings when their exact spelling
+                            # is not in the signature list (e.g. renamed or lightly mutated cheats).
+                            if (-not $decodedHit) {
+                                $normalizedDecoded = Get-NormalizedCheatText -Text $decoded
+                                if ($normalizedDecoded -match '(autocrystal|crystalaura|autoanchor|anchoraura|doubleanchor|safeanchor|autototem|hovertotem|autopot|autoarmor|maceswap|killaura|clickaura|triggerbot|aimassist|silentaim|reachhack|velocity|antikb|noslow|packetfly|scaffold|nuker|cheststeal|fakeinv|fakelag|pingspoof|selfdestruct|tokenlogger|sessionstealer|webhook|backdoor|keylogger)') {
+                                    [void]$foundStrings.Add("[obfuscated] $decoded")
+                                }
                             }
                         }
                     }
@@ -1231,27 +882,11 @@ function Invoke-ModScan {
                     foreach ($m in $fullwidthRegex.Matches($utf8)) {
                         [void]$foundFullwidth.Add($m.Value)
                     }
-
-                    $normName = Get-NormalizedCheatText -Text $name
-                    foreach ($hit in (Find-KeywordHits -Norm $normName)) { [void]$foundFragments.Add("[path] " + $hit) }
-
-                    if ($bytes.Length -le 524288) {
-                        $normText = Get-NormalizedCheatText -Text $utf8
-                        $textHits = @(Find-KeywordHits -Norm $normText)
-                        if ($textHits.Count -gt 0) {
-                            foreach ($hit in $textHits) { [void]$foundFragments.Add($hit) }
-                        } elseif ($utf8.Contains('!')) {
-                            $normTextU = Get-NormalizedCheatText -Text $utf8 -AltLeet
-                            foreach ($hit in (Find-KeywordHits -Norm $normTextU)) { [void]$foundFragments.Add("[alt] " + $hit) }
-                        }
-                    }
                 } catch { }
             }
         }
 
         foreach ($ia in $innerArchives) { try { $ia.Dispose() } catch { } }
-        }
-
         $archive.Dispose()
     } catch { }
 
@@ -1287,78 +922,16 @@ function Invoke-ModScan {
         if (-not $isRedundant) { [void]$finalFullwidth.Add($fw) }
     }
 
-    return @{ Patterns = $foundPatterns; Strings = $foundStrings; Fullwidth = $finalFullwidth; Fragments = $foundFragments }
+    return @{ Patterns = $foundPatterns; Strings = $foundStrings; Fullwidth = $finalFullwidth }
 }
 
 function Invoke-ObfuscationScan {
-    param([string]$FilePath, [int]$Depth = 0)
+    param([string]$FilePath)
 
     $flags = [System.Collections.Generic.List[string]]::new()
 
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
-
-        if ($script:FastReady -and $Depth -lt 2) {
-            foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
-                try {
-                    $msN = New-Object System.IO.MemoryStream
-                    $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
-                    $tmpJar = Join-Path ([System.IO.Path]::GetTempPath()) ("netty_" + [Guid]::NewGuid().ToString("N") + ".jar")
-                    $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
-                    $subFlags = Invoke-ObfuscationScan -FilePath $tmpJar -Depth ($Depth + 1)
-                    Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
-                    foreach ($sf in $subFlags) { $flags.Add("[nested] " + $sf) }
-                } catch {
-                    if ($script:ObfDebug) { Write-Host "  [obf recursion error] $($_.Exception.Message)" -ForegroundColor Red }
-                }
-            }
-        }
-
-        # --- fake library identity / hex-name obfuscation / unexpected bundles ---
-        try {
-            $hexClassCount  = 0
-            $xnumClassCount = 0
-            $nestedJarCount = 0
-            $fmjId = ""; $fmjEntryRaw = ""; $fmjMixinCount = 0
-
-            foreach ($entry in $archive.Entries) {
-                if ($entry.FullName -match "^META-INF/jars/.+\.jar$") { $nestedJarCount++ }
-                if ($entry.FullName -match "\.class$") {
-                    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($entry.FullName)
-                    if ($baseName -cmatch "^x[0-9A-F]{6}$") { $hexClassCount++ }
-                    elseif ($baseName -cmatch "^x\d+$")     { $xnumClassCount++ }
-                }
-            }
-
-            $fmjEntry2 = $archive.Entries | Where-Object { $_.FullName -eq "fabric.mod.json" } | Select-Object -First 1
-            if ($fmjEntry2) {
-                $s2 = $fmjEntry2.Open(); $r2 = New-Object System.IO.StreamReader($s2); $t2 = $r2.ReadToEnd(); $r2.Close(); $s2.Close()
-                if ($t2 -match '"id"\s*:\s*"([^"]+)"')          { $fmjId = $matches[1] }
-                if ($t2 -match '"client"\s*:\s*\[\s*"([^"]+)"') { $fmjEntryRaw = $matches[1] }
-                if ($t2 -match '"mixins"\s*:\s*\[([^\]]*)\]')   { $fmjMixinCount = ([regex]::Matches($matches[1], '"')).Count / 2 }
-            }
-
-            if ($hexClassCount -ge 5)   { $flags.Add("Hex-suffix class obfuscation (x469B07 style) — $hexClassCount classes") }
-            if ($xnumClassCount -ge 10) { $flags.Add("x-number class obfuscation (x0, x1, x2...) — $xnumClassCount classes") }
-
-            $smallLibIds = @("clothbasicmath","cloth-basic-math","jankson","spruceui")
-            if ($fmjId -and ($smallLibIds -contains $fmjId.ToLower())) {
-                $obfTotal = $hexClassCount + $xnumClassCount
-                if ($obfTotal -gt 0) {
-                    $flags.Add("FAKE LIBRARY IDENTITY — claims to be '$fmjId' but contains $obfTotal obfuscated classes")
-                }
-                if ($nestedJarCount -gt 0) {
-                    $flags.Add("Library bundles unexpected nested JARs ($nestedJarCount) — small libs are standalone")
-                }
-                if ($fmjMixinCount -gt 0) {
-                    $flags.Add("Library declares mixins ($fmjMixinCount) — '$fmjId' has no legitimate reason to inject code")
-                }
-            }
-
-            if ($fmjEntryRaw -and ($fmjEntryRaw -cmatch "\.x[0-9A-F]{6}$" -or $fmjEntryRaw -cmatch "(^|\.)([a-z]\.){3,}")) {
-                $flags.Add("Entrypoint in obfuscated package — $fmjEntryRaw")
-            }
-        } catch { }
 
         $totalClass    = 0
         $numericCount  = 0
@@ -1391,7 +964,21 @@ function Invoke-ObfuscationScan {
             "Smoke"          = @("SmokeObf", "smoke.obf")
         }
 
-        foreach ($entry in $archive.Entries) {
+        $allEntries = [System.Collections.Generic.List[object]]::new()
+        $innerArchives = [System.Collections.Generic.List[object]]::new()
+        foreach ($entry in $archive.Entries) { $allEntries.Add($entry) }
+        foreach ($nested in ($archive.Entries | Where-Object { $_.FullName -match "(?i)^META-INF/jars/.+\.jar$" })) {
+            try {
+                $stream = $nested.Open()
+                $memory = New-Object System.IO.MemoryStream
+                $stream.CopyTo($memory); $stream.Close(); $memory.Position = 0
+                $inner = [System.IO.Compression.ZipArchive]::new($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+                $innerArchives.Add($inner)
+                foreach ($innerEntry in $inner.Entries) { $allEntries.Add($innerEntry) }
+            } catch { }
+        }
+
+        foreach ($entry in $allEntries) {
             $name = $entry.FullName
 
             if ($name -match "\.class$") {
@@ -1432,6 +1019,7 @@ function Invoke-ObfuscationScan {
             }
         }
 
+        foreach ($inner in $innerArchives) { try { $inner.Dispose() } catch { } }
         $archive.Dispose()
 
         if ($totalClass -lt 5) { return $flags }
@@ -1504,22 +1092,15 @@ function Invoke-BypassScan {
     try {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
 
-        if ($script:FastReady -and $Depth -eq 0) {
-            foreach ($nj in ($zip.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
-                try {
-                    $msN = New-Object System.IO.MemoryStream
-                    $stN = $nj.Open(); $stN.CopyTo($msN); $stN.Close(); $msN.Position = 0
-                    $tmpJar = [System.IO.Path]::GetTempFileName()
-                    $fsN = [System.IO.File]::Create($tmpJar); $msN.CopyTo($fsN); $fsN.Close(); $msN.Dispose()
-                    $subFlags = Invoke-ObfuscationScan -FilePath $tmpJar -Depth 1
-                    Remove-Item $tmpJar -Force -ErrorAction SilentlyContinue
-                    foreach ($sf in $subFlags) { $flags.Add("[nested] " + $sf) }
-                } catch { }
-            }
-        }
-
         $nestedJars   = @($zip.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })
         $outerClasses = @($zip.Entries | Where-Object { $_.FullName -match "\.class$" })
+
+        foreach ($nj in $nestedJars) {
+            $nestedName = [System.IO.Path]::GetFileName($nj.FullName)
+            if ($nestedName -match '(?i)^cloth[-_ ]?basic[-_ ]?math\.jar$') {
+                $flags.Add("Known cheat nested JAR — clothbasicmath payload detected")
+            }
+        }
 
         $suspiciousNestedJars = @()
         foreach ($nj in $nestedJars) {
@@ -2054,7 +1635,9 @@ function Write-SuspiciousCard {
     Write-Host "  │ " -ForegroundColor DarkYellow -NoNewline
     Write-Host " FLAGGED " -ForegroundColor White -BackgroundColor DarkYellow -NoNewline
     Write-Host "  " -NoNewline
-    Write-Host $Mod.FileName -ForegroundColor Yellow
+    Write-Host $Mod.FileName -ForegroundColor Yellow -NoNewline
+    Write-HiddenBadge -File $Mod
+    Write-Host
     Write-Host ("  │ " + ("─" * 66)) -ForegroundColor DarkYellow
 
     if ($Mod.Patterns.Count -gt 0) {
@@ -2075,35 +1658,6 @@ function Write-SuspiciousCard {
         foreach ($s in $uniqueStrings) {
             Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
             Write-Host $s -ForegroundColor DarkYellow
-        }
-    }
-
-    if ($Mod.Fragments -and $Mod.Fragments.Count -gt 0) {
-        Write-Host "  │" -ForegroundColor DarkYellow
-        Write-Host "  │  " -ForegroundColor DarkYellow -NoNewline
-        Write-Host "OBFUSCATED/FRAGMENT MATCHES" -ForegroundColor DarkGray
-        foreach ($f in ($Mod.Fragments | Sort-Object)) {
-            Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
-            Write-Host $f -ForegroundColor Yellow
-        }
-    }
-
-    if ($Mod.Flags -and $Mod.Flags.Count -gt 0) {
-        Write-Host "  │" -ForegroundColor DarkYellow
-        Write-Host "  │  " -ForegroundColor DarkYellow -NoNewline
-        Write-Host "OBFUSCATION FLAGS" -ForegroundColor DarkGray
-        foreach ($flag in $Mod.Flags) {
-            if ($flag -match "^(.+?) — (.+)$") {
-                Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
-                Write-Host "⚑ " -ForegroundColor Yellow -NoNewline
-                Write-Host $matches[1] -ForegroundColor White
-                Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
-                Write-Host $matches[2] -ForegroundColor Gray
-            } else {
-                Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
-                Write-Host "⚑ " -ForegroundColor Yellow -NoNewline
-                Write-Host $flag -ForegroundColor White
-            }
         }
     }
 
@@ -2129,7 +1683,9 @@ function Write-InjectionCard {
     Write-Host "  │ " -ForegroundColor DarkYellow -NoNewline
     Write-Host " INJECTION " -ForegroundColor White -BackgroundColor DarkYellow -NoNewline
     Write-Host "  " -NoNewline
-    Write-Host $Mod.FileName -ForegroundColor Yellow
+    Write-Host $Mod.FileName -ForegroundColor Yellow -NoNewline
+    Write-HiddenBadge -File $Mod
+    Write-Host
     Write-Host ("  │ " + ("─" * 66)) -ForegroundColor DarkYellow
 
     foreach ($flag in $Mod.Flags) {
@@ -2164,7 +1720,9 @@ function Write-ObfuscationCard {
     Write-Host "  │ " -ForegroundColor DarkYellow -NoNewline
     Write-Host " OBFUSCATED " -ForegroundColor Black -BackgroundColor DarkYellow -NoNewline
     Write-Host "  " -NoNewline
-    Write-Host $Mod.FileName -ForegroundColor Yellow
+    Write-Host $Mod.FileName -ForegroundColor Yellow -NoNewline
+    Write-HiddenBadge -File $Mod
+    Write-Host
     Write-Host ("  │ " + ("─" * 66)) -ForegroundColor DarkYellow
 
     foreach ($flag in $Mod.Flags) {
@@ -2199,7 +1757,9 @@ $bypassMods      = @()
 $obfuscatedMods  = @()
 
 try {
-    $jarFiles = Get-ChildItem -Path $modsPath -Filter *.jar -Force -ErrorAction Stop
+    # -Force includes Hidden and System files; the explicit extension check also avoids
+    # PowerShell/provider-specific -Filter behaviour hiding system JARs.
+    $jarFiles = @(Get-ChildItem -Path $modsPath -Force -File -ErrorAction Stop | Where-Object { $_.Extension -ieq ".jar" })
 } catch {
     Write-Host "❌ Error accessing directory: $_" -ForegroundColor Red
     Write-Host "Press any key to exit..." -ForegroundColor Gray
@@ -2222,7 +1782,7 @@ $spinnerFrames = @("⣾","⣽","⣻","⢿","⡿","⣟","⣯","⣷")
 $totalFiles    = $jarFiles.Count
 $idx           = 0
 
-Write-Host "🔍 Pass 1 — Hash verification (Modrinth + Megabase)..." -ForegroundColor DarkYellow
+Write-Host "🔍 Pass 1 — Hash verification (Modrinth → CurseForge → Megabase)..." -ForegroundColor DarkYellow
 
 foreach ($jar in $jarFiles) {
     $idx++
@@ -2234,12 +1794,19 @@ foreach ($jar in $jarFiles) {
     if ($hash) {
         $modrinthData = Query-Modrinth -Hash $hash
         if ($modrinthData.Slug) {
-            $verifiedMods += [PSCustomObject]@{ ModName = $modrinthData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $modrinthData.Downloads; Hidden = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden) }
+            $verifiedMods += [PSCustomObject]@{ ModName = $modrinthData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $modrinthData.Downloads; VerificationSource = "Modrinth"; Attributes = $jar.Attributes }
             continue
         }
+
+        $curseForgeData = Query-CurseForge -Hash $hash
+        if ($curseForgeData.Name) {
+            $verifiedMods += [PSCustomObject]@{ ModName = $curseForgeData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $curseForgeData.Downloads; VerificationSource = "CurseForge"; Attributes = $jar.Attributes }
+            continue
+        }
+
         $megabaseData = Query-Megabase -Hash $hash
         if ($megabaseData.name) {
-            $verifiedMods += [PSCustomObject]@{ ModName = $megabaseData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $megabaseData.downloads; Hidden = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden) }
+            $verifiedMods += [PSCustomObject]@{ ModName = $megabaseData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $megabaseData.downloads; VerificationSource = "Megabase"; Attributes = $jar.Attributes }
             continue
         }
     }
@@ -2249,18 +1816,14 @@ foreach ($jar in $jarFiles) {
         FileName = $jar.Name
         FilePath = $jar.FullName
         DownloadSource = $src
-        Hidden = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
+        Attributes = $jar.Attributes
     }
 }
 
 Write-Host "`r$(' ' * 100)`r" -NoNewline
 
 $modWord = if ($totalFiles -eq 1) { "mod" } else { "mods" }
-$pass2Label = if ($script:EnableAdvancedStringDecode) {
-    "Advanced deep-scanning all $totalFiles $modWord..."
-} else {
-    "Scanning strings/patterns in all $totalFiles $modWord..."
-}
+$pass2Label = "Scanning strings, patterns and nested JARs in all $totalFiles $modWord..."
 Write-Host "🔬 Pass 2 — $pass2Label" -ForegroundColor DarkYellow
 $idx = 0
 
@@ -2270,15 +1833,19 @@ foreach ($jar in $jarFiles) {
     Write-Host "`r[$spinner] Scanning: $idx/$totalFiles - $($jar.Name)" -ForegroundColor Yellow -NoNewline
 
     $result = Invoke-ModScan -FilePath $jar.FullName
+    $knownNestedCheatJars = @(Get-KnownNestedCheatJars -FilePath $jar.FullName)
+    if ($knownNestedCheatJars.Count -gt 0) {
+        foreach ($nestedName in $knownNestedCheatJars) {
+            [void]$result.Patterns.Add("Nested cheat JAR: $nestedName")
+        }
+    }
 
-    if ($result.Patterns.Count -gt 0 -or $result.Strings.Count -gt 0 -or $result.Fragments.Count -gt 0 -or $result.Fullwidth.Count -gt 0) {
+    if ($result.Patterns.Count -gt 0 -or $result.Strings.Count -gt 0 -or $result.Fullwidth.Count -gt 0) {
         $suspiciousMods += [PSCustomObject]@{
             FileName = $jar.Name
             Patterns = $result.Patterns
             Strings  = $result.Strings
-            Fragments = $result.Fragments
             Fullwidth = $result.Fullwidth
-            Flags = [System.Collections.Generic.List[string]]::new()
             Hidden = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
         }
         $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
@@ -2297,8 +1864,12 @@ foreach ($jar in $jarFiles) {
 
     $bypassFlagsRaw = Invoke-BypassScan -FilePath $jar.FullName
     $injectedPayloadFlagsRaw = Invoke-InjectedSodiumScan -FilePath $jar.FullName
+    $knownNestedCheatJars = @(Get-KnownNestedCheatJars -FilePath $jar.FullName)
 
     $bypassFlags = [System.Collections.Generic.List[string]]::new()
+    foreach ($nestedName in $knownNestedCheatJars) {
+        $bypassFlags.Add("Known cheat nested JAR — $nestedName / clothbasicmath payload")
+    }
     foreach ($flag in @($bypassFlagsRaw)) {
         if ($null -ne $flag -and $flag -ne "") { $bypassFlags.Add([string]$flag) }
     }
@@ -2330,19 +1901,16 @@ foreach ($jar in $jarFiles) {
     $obfFlags = Invoke-ObfuscationScan -FilePath $jar.FullName
 
     if ($obfFlags.Count -gt 0) {
-        $existing = $suspiciousMods | Where-Object { $_.FileName -eq $jar.Name } | Select-Object -First 1
-        if (-not $existing) { $existing = $bypassMods | Where-Object { $_.FileName -eq $jar.Name } | Select-Object -First 1 }
-        if ($existing) {
-            # merge into the existing card instead of dropping the evidence
-            foreach ($f in $obfFlags) { $existing.Flags.Add($f) }
-        } else {
+        $alreadyFlagged = ($suspiciousMods | Where-Object { $_.FileName -eq $jar.Name }).Count -gt 0 -or
+                          ($bypassMods     | Where-Object { $_.FileName -eq $jar.Name }).Count -gt 0
+        if (-not $alreadyFlagged) {
             $obfuscatedMods += [PSCustomObject]@{
                 FileName = $jar.Name
                 Flags    = $obfFlags
                 Hidden   = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
             }
+            $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
         }
-        $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
     }
 }
 
@@ -2371,12 +1939,12 @@ if ($verifiedMods.Count -gt 0) {
     foreach ($mod in $verifiedMods) {
         Write-Host "  ✓ " -ForegroundColor Green -NoNewline
         Write-Host "$($mod.ModName)" -ForegroundColor White -NoNewline
-        $dl = Format-DownloadCount -Count $mod.Downloads
-        if ($dl) {
-            Write-Host "  ($dl downloads)" -ForegroundColor DarkGray -NoNewline
-        }
         Write-Host " → " -ForegroundColor Gray -NoNewline
-        Write-Host "$($mod.FileName)" -ForegroundColor DarkGray
+        Write-Host "$($mod.FileName)" -ForegroundColor DarkGray -NoNewline
+        Write-HiddenBadge -File $mod
+        $downloadText = "$(Format-DownloadCount -Count $mod.Downloads) downloads"
+        $sourceText = if ($mod.VerificationSource) { $mod.VerificationSource } else { "verified" }
+        Write-Host " [$sourceText; $downloadText]" -ForegroundColor DarkGray
     }
     Write-Host ""
 }
@@ -2391,7 +1959,8 @@ if ($unknownMods.Count -gt 0) {
         $sourceText = if ($mod.DownloadSource) { "Source: $($mod.DownloadSource)" } else { "Source: ?" }
         $bottomLine = "  ╚═ " + $sourceText + " " + ("═" * (67 - $sourceText.Length)) + "╝"
         Write-Host $topLine    -ForegroundColor Yellow
-        if ($mod.Hidden) { Write-Host "    MOD IS HIDDEN" -ForegroundColor Yellow }
+        Write-HiddenBadge -File $mod
+        Write-Host
         Write-Host $bottomLine -ForegroundColor Yellow
         Write-Host ""
     }
