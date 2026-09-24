@@ -107,8 +107,6 @@ if (-not (Test-Path $modsPath -PathType Container)) {
 }
 
 # Single scan mode: normal string/pattern scan.
-Write-Host "⚡ Normal scan mode enabled" -ForegroundColor DarkGray
-Write-Host
 
 Write-Host "📁 Scanning directory: $modsPath" -ForegroundColor Yellow
 Write-Host
@@ -171,6 +169,10 @@ $suspiciousPatterns = @(
 )
 
 $cheatStrings = @(
+    # Plaintext module names recovered by the nested string decoder.
+    "Aimbot", "Triggerbot", "Auto Clicker", "PlayerESP", "StorageESP",
+    "Freecam", "AutoCrystal", "AutoMace", "Bridge Assist", "Fast XP",
+    "Crystal Optimizer",
     "AutoCrystal", "autocrystal", "auto crystal", "auto.crystal",
     "auto!crystal", "auto?crystal", "auto-crystal", "cw crystal",
     "Auto.Crystal", "Auto!Crystal", "Auto?Crystal", "Auto-Crystal",
@@ -726,7 +728,9 @@ function Get-ClassConstantPoolData {
     $integers    = [System.Collections.Generic.HashSet[int]]::new()
 
     try {
-        $cpCount = ([int]$Bytes[8] -shl 8) -bor [int]$Bytes[9]
+        # Avoid bit-shift/cast differences between Windows PowerShell 5.1 and pwsh.
+        # Java class-file numbers are always big-endian.
+        $cpCount = ([int]$Bytes[8] * 256) + [int]$Bytes[9]
         $pos = 10
         $i = 1
 
@@ -737,20 +741,26 @@ function Get-ClassConstantPoolData {
             switch ($tag) {
                 1 { # CONSTANT_Utf8
                     if ($pos + 2 -gt $Bytes.Length) { return $null }
-                    $len = ([int]$Bytes[$pos] -shl 8) -bor [int]$Bytes[$pos + 1]
+                    $len = ([int]$Bytes[$pos] * 256) + [int]$Bytes[$pos + 1]
                     $pos += 2
                     if ($len -lt 0 -or $pos + $len -gt $Bytes.Length) { return $null }
                     if ($len -gt 0) {
+                        # Obfuscated payloads used here are ASCII hex, therefore normal UTF-8
+                        # decoding is sufficient even though class files technically use MUTF-8.
                         $s = [System.Text.Encoding]::UTF8.GetString($Bytes, $pos, $len)
                         $utf8Strings.Add($s)
                     }
                     $pos += $len
                 }
-                3 { # CONSTANT_Integer
+                3 { # CONSTANT_Integer (signed Java int, big-endian)
                     if ($pos + 4 -gt $Bytes.Length) { return $null }
-                    $u = (([uint64]$Bytes[$pos] -shl 24) -bor ([uint64]$Bytes[$pos + 1] -shl 16) -bor ([uint64]$Bytes[$pos + 2] -shl 8) -bor [uint64]$Bytes[$pos + 3])
-                    if ($u -ge 2147483648) {
-                        [void]$integers.Add([int]([int64]$u - 4294967296))
+                    $u = ([int64]$Bytes[$pos]     * ([int64]16777216)) +
+                         ([int64]$Bytes[$pos + 1] * ([int64]65536)) +
+                         ([int64]$Bytes[$pos + 2] * ([int64]256)) +
+                         [int64]$Bytes[$pos + 3]
+
+                    if ($u -ge ([int64]2147483648)) {
+                        [void]$integers.Add([int]($u - ([int64]4294967296)))
                     } else {
                         [void]$integers.Add([int]$u)
                     }
@@ -822,13 +832,13 @@ function Convert-ObfuscatedHexStage2 {
         $chars = New-Object char[] $count
 
         $state = [int64]$Seed
-        if ($state -lt 0) { $state += 4294967296 }
-        $state = [uint64]$state
+        if ($state -lt 0) { $state += ([int64]4294967296) }
 
         for ($i = 0; $i -lt $count; $i++) {
             $v = [Convert]::ToInt32($Value.Substring($i * 4, 4), 16)
-            $state = (($state * [uint64]1664525) + [uint64]1013904223) % [uint64]4294967296
-            $key = [int](($state -shr 16) -band 0xFFFF)
+            # Java int overflow == modulo 2^32. Int64 keeps the multiplication exact.
+            $state = (($state * ([int64]1664525)) + ([int64]1013904223)) % ([int64]4294967296)
+            $key = [int]([math]::Floor($state / ([int64]65536)) % ([int64]65536))
             $chars[$i] = [char](($v -bxor $key) -band 0xFFFF)
         }
 
@@ -851,7 +861,8 @@ function Get-DecodedObfuscatedStrings {
 
     if ($hexValues.Count -eq 0) { return $decoded }
 
-    $seeds = @($cp.Integers)
+    $seeds = [System.Collections.Generic.List[int]]::new()
+    foreach ($seedValue in $cp.Integers) { $seeds.Add([int]$seedValue) }
 
     foreach ($encoded in $hexValues) {
         $stage1 = Convert-ObfuscatedHexStage1 -Value $encoded
@@ -939,10 +950,30 @@ function Invoke-ModScan {
 
                     if ($name -match '\.class$') {
                         foreach ($decodedString in (Get-DecodedObfuscatedStrings -Bytes $bytes)) {
+                            if ([string]::IsNullOrWhiteSpace($decodedString)) { continue }
+
+                            # Compare both the original form and a compact alphanumeric form so
+                            # decoded values such as "Auto Clicker" also match "AutoClicker".
+                            $decodedCompact = ($decodedString -replace '[^A-Za-z0-9]', '').ToLowerInvariant()
+                            $decodedMatched = $false
+
                             foreach ($s in $cheatStringSet) {
                                 if ($decodedString.IndexOf($s, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                                    [void]$foundStrings.Add($s)
+                                    $decodedMatched = $true
+                                    break
                                 }
+
+                                $signalCompact = ($s -replace '[^A-Za-z0-9]', '').ToLowerInvariant()
+                                if ($decodedCompact.Length -ge 4 -and $signalCompact.Length -ge 4 -and
+                                    $decodedCompact.Contains($signalCompact)) {
+                                    $decodedMatched = $true
+                                    break
+                                }
+                            }
+
+                            if ($decodedMatched) {
+                                # Show the actual recovered plaintext, not only the canonical signal.
+                                [void]$foundStrings.Add($decodedString)
                             }
                         }
                     }
@@ -1758,6 +1789,16 @@ function Write-InjectionCard {
         }
     }
 
+    if ($Mod.Strings -and $Mod.Strings.Count -gt 0) {
+        Write-Host "  │" -ForegroundColor DarkYellow
+        Write-Host "  │  " -ForegroundColor DarkYellow -NoNewline
+        Write-Host "STRINGS" -ForegroundColor DarkGray
+        foreach ($s in ($Mod.Strings | Sort-Object -Unique)) {
+            Write-Host "  │    " -ForegroundColor DarkYellow -NoNewline
+            Write-Host $s -ForegroundColor Red
+        }
+    }
+
     Write-Host "  │" -ForegroundColor DarkYellow
     Write-Host ("  " + ("─" * 70)) -ForegroundColor DarkYellow
     Write-Host ""
@@ -1966,9 +2007,12 @@ foreach ($jar in $jarFiles) {
     }
 
     if ($bypassFlags.Count -gt 0) {
+        $stringScanForJar = $suspiciousMods | Where-Object { $_.FileName -eq $jar.Name } | Select-Object -First 1
         $bypassMods += [PSCustomObject]@{
             FileName = $jar.Name
             Flags    = $bypassFlags
+            Strings  = if ($null -ne $stringScanForJar) { $stringScanForJar.Strings } else { @() }
+            Patterns = if ($null -ne $stringScanForJar) { $stringScanForJar.Patterns } else { @() }
             Hidden   = (Test-IsHiddenPath -File $jar -RootPath $modsPath)
         }
         $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
