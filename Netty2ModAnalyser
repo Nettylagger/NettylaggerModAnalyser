@@ -477,9 +477,31 @@ $patternRegex = [regex]::new(
 $cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($s in $cheatStrings) { [void]$cheatStringSet.Add($s) }
 
+# One compiled matcher is dramatically faster than testing 1,000+ strings
+# individually against every class file. Sort longest-first so the reported
+# hit is the most specific variant when signatures share a prefix.
+$cheatRegexParts = @($cheatStrings | Sort-Object { $_.Length } -Descending | ForEach-Object { [regex]::Escape($_) })
+$cheatRegexOptions = [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
+                     [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
+                     [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+$cheatRegex = [regex]::new('(?:' + ($cheatRegexParts -join '|') + ')', $cheatRegexOptions)
+
 function Get-FileSHA1 {
     param([string]$Path)
     return (Get-FileHash -Path $Path -Algorithm SHA1).Hash
+}
+
+function Get-BytesSHA256Hex {
+    param([byte[]]$Bytes)
+
+    if ($null -eq $Bytes) { return "" }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha.ComputeHash($Bytes)
+        return ([System.BitConverter]::ToString($hash)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
 }
 
 function Get-DownloadOriginUrl {
@@ -899,12 +921,12 @@ function Add-ModScanEntryFindings {
     param(
         $Entry,
         [System.Collections.Generic.HashSet[string]]$FoundPatterns,
-        [System.Collections.Generic.HashSet[string]]$FoundStrings,
-        [System.Collections.Generic.HashSet[string]]$FoundFullwidth
+        [System.Text.StringBuilder]$ScanText
     )
 
     $name = [string]$Entry.FullName
 
+    # File/path-name signatures are cheap and can be checked immediately.
     foreach ($m in $patternRegex.Matches($name)) {
         [void]$FoundPatterns.Add($m.Value)
     }
@@ -921,31 +943,15 @@ function Add-ModScanEntryFindings {
         $bytes = $ms2.ToArray()
         $ms2.Dispose()
 
-        $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
-        $utf8  = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-        foreach ($m in $patternRegex.Matches($ascii)) {
-            [void]$FoundPatterns.Add($m.Value)
-        }
-
-        foreach ($s in $cheatStringSet) {
-            if ($ascii.IndexOf($s, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-                $utf8.IndexOf($s, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                [void]$FoundStrings.Add($s)
-            }
-        }
-
-        # Runtime-obfuscated strings are decoded in the dedicated nested-JAR
-        # pass only. Decoding every .class here made Pass 2 unnecessarily slow.
-
-        foreach ($m in $fullwidthRegex.Matches($utf8)) {
-            [void]$FoundFullwidth.Add($m.Value)
-        }
+        # UTF-8 also preserves ordinary ASCII signatures, so doing a second
+        # full ASCII conversion/search only doubled the work for no benefit.
+        $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+        [void]$ScanText.Append($text)
+        [void]$ScanText.Append("`n")
     } catch {
         # Keep scanning the remaining entries if one malformed class/resource fails.
     }
 }
-
 
 function Test-DecodedCheatSignal {
     param([string]$Value)
@@ -968,22 +974,39 @@ function Test-DecodedCheatSignal {
     return $false
 }
 
-function Get-NestedDecodedCheatStrings {
+function Get-KnownNestedInjectionStrings {
     param([string]$FilePath)
 
     $found = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $knownModules = [ordered]@{
+        'x/y/z/x121B67.class' = 'AutoCrystal'
+        'x/y/z/x2BBC01.class' = 'StorageESP'
+        'x/y/z/x3007BC.class' = 'AutoMace'
+        'x/y/z/x388489.class' = 'Auto Clicker'
+        'x/y/z/x503785.class' = 'Triggerbot'
+        'x/y/z/xB20D7B.class' = 'Freecam'
+        'x/y/z/xC0D045.class' = 'PlayerESP'
+        'x/y/z/xC53481.class' = 'Bridge Assist'
+        'x/y/z/xE9938F.class' = 'Fast XP'
+        'x/y/z/xEB47E4.class' = 'Crystal Optimizer'
+        'x/y/z/xF968BD.class' = 'Aimbot'
+    }
 
+    $outer = $null
     try {
         $outer = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
 
-        foreach ($nestedEntry in @($outer.Entries | Where-Object { $_.FullName -match '^META-INF/jars/.+\.jar$' })) {
-            $inner = $null
+        foreach ($nestedEntry in $outer.Entries) {
+            if ($nestedEntry.FullName -notmatch '^META-INF/jars/.+\.jar$') { continue }
+
+            $nestedStream = $null
             $memory = $null
+            $inner = $null
             try {
                 $nestedStream = $nestedEntry.Open()
                 $memory = New-Object System.IO.MemoryStream
                 $nestedStream.CopyTo($memory)
-                $nestedStream.Close()
+                $nestedStream.Dispose(); $nestedStream = $null
                 $memory.Position = 0
 
                 $inner = [System.IO.Compression.ZipArchive]::new(
@@ -992,87 +1015,61 @@ function Get-NestedDecodedCheatStrings {
                     $true
                 )
 
-                # Fast gate: only run the expensive decoder on the nested payload
-                # it was added for. Normal dependencies are skipped completely.
-                $isKnownClothBasicMathPayload = $false
-                $modJsonEntry = $inner.Entries | Where-Object { $_.FullName -eq 'fabric.mod.json' } | Select-Object -First 1
-                if ($null -ne $modJsonEntry) {
-                    try {
-                        $mjs = $modJsonEntry.Open()
-                        $mjr = New-Object System.IO.StreamReader($mjs)
-                        $mjt = $mjr.ReadToEnd()
-                        $mjr.Close(); $mjs.Close()
-                        if ($mjt -match '"id"\s*:\s*"nettyclient-internal"' -and
-                            $mjt -match '"name"\s*:\s*"cloth-basic-math internal"') {
-                            $isKnownClothBasicMathPayload = $true
-                        }
-                    } catch { }
+                $modJsonEntry = $inner.GetEntry('fabric.mod.json')
+                if ($null -eq $modJsonEntry) { continue }
+
+                $metaStream = $null
+                $metaReader = $null
+                try {
+                    $metaStream = $modJsonEntry.Open()
+                    $metaReader = New-Object System.IO.StreamReader($metaStream)
+                    $meta = $metaReader.ReadToEnd()
+                } finally {
+                    if ($null -ne $metaReader) { try { $metaReader.Dispose() } catch { } }
+                    if ($null -ne $metaStream) { try { $metaStream.Dispose() } catch { } }
                 }
 
-                if (-not $isKnownClothBasicMathPayload) { continue }
-
-                # Only these classes carry the module labels in this payload.
-                # This avoids parsing ~200 obfuscated classes and thousands of
-                # seed/string combinations on every scan.
-                $targetMap = @{
-                    'x/y/z/x121B67.class' = 'AutoCrystal'
-                    'x/y/z/x2BBC01.class' = 'StorageESP'
-                    'x/y/z/x3007BC.class' = 'AutoMace'
-                    'x/y/z/x388489.class' = 'Auto Clicker'
-                    'x/y/z/x503785.class' = 'Triggerbot'
-                    'x/y/z/xB20D7B.class' = 'Freecam'
-                    'x/y/z/xC0D045.class' = 'PlayerESP'
-                    'x/y/z/xC53481.class' = 'Bridge Assist'
-                    'x/y/z/xE9938F.class' = 'Fast XP'
-                    'x/y/z/xEB47E4.class' = 'Crystal Optimizer'
-                    'x/y/z/xF968BD.class' = 'Aimbot'
+                # Exact identity used by the hidden cloth-basic-math payload.
+                if ($meta -notmatch '"id"\s*:\s*"nettyclient-internal"' -or
+                    $meta -notmatch '"name"\s*:\s*"cloth-basic-math internal"' -or
+                    $meta -notmatch 'x\.y\.z\.x469B07') {
+                    continue
                 }
 
-                $entryByName = @{}
-                foreach ($ie in $inner.Entries) {
-                    if ($targetMap.ContainsKey($ie.FullName)) {
-                        $entryByName[$ie.FullName] = $ie
+                # No class decompression/decryption here. The strings were already
+                # recovered once; at runtime we only verify the corresponding
+                # obfuscated module classes are present. This is effectively instant.
+                $names = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+                foreach ($entry in $inner.Entries) { [void]$names.Add($entry.FullName) }
+
+                $present = 0
+                foreach ($classPath in $knownModules.Keys) {
+                    if ($names.Contains($classPath)) { $present++ }
+                }
+                if ($present -lt 5) { continue }
+
+                foreach ($classPath in $knownModules.Keys) {
+                    if ($names.Contains($classPath)) {
+                        [void]$found.Add([string]$knownModules[$classPath])
                     }
                 }
-
-                foreach ($classPath in $targetMap.Keys) {
-                    if (-not $entryByName.ContainsKey($classPath)) { continue }
-
-                    $decodedHit = $false
-                    try {
-                        $classEntry = $entryByName[$classPath]
-                        $classStream = $classEntry.Open()
-                        $classMemory = New-Object System.IO.MemoryStream
-                        $classStream.CopyTo($classMemory)
-                        $classStream.Close()
-                        $classBytes = $classMemory.ToArray()
-                        $classMemory.Dispose()
-
-                        foreach ($plain in @(Get-DecodedObfuscatedStrings -Bytes $classBytes)) {
-                            if (Test-DecodedCheatSignal -Value $plain) {
-                                [void]$found.Add([string]$plain)
-                                $decodedHit = $true
-                            }
-                        }
-                    } catch { }
-
-                    # Windows PowerShell 5.1 fallback: retain the already-verified
-                    # label for this exact payload if decoding the class failed.
-                    if (-not $decodedHit) {
-                        [void]$found.Add([string]$targetMap[$classPath])
-                    }
-                }
-            } catch { }
-            finally {
+            } catch {
+                # Ignore malformed nested jars.
+            } finally {
                 if ($null -ne $inner) { try { $inner.Dispose() } catch { } }
                 if ($null -ne $memory) { try { $memory.Dispose() } catch { } }
+                if ($null -ne $nestedStream) { try { $nestedStream.Dispose() } catch { } }
             }
         }
+    } catch {
+        # Keep the analyser alive for malformed outer jars.
+    } finally {
+        if ($null -ne $outer) { try { $outer.Dispose() } catch { } }
+    }
 
-        $outer.Dispose()
-    } catch { }
-
-    return @($found)
+    $result = [System.Collections.Generic.List[string]]::new()
+    foreach ($item in $found) { $result.Add([string]$item) }
+    return $result.ToArray()
 }
 
 function Invoke-ModScan {
@@ -1081,13 +1078,14 @@ function Invoke-ModScan {
     $foundPatterns  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $foundStrings   = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $foundFullwidth = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $scanText       = [System.Text.StringBuilder]::new(1048576)
 
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
 
         # Scan the outer JAR normally.
         foreach ($entry in $archive.Entries) {
-            Add-ModScanEntryFindings -Entry $entry -FoundPatterns $foundPatterns -FoundStrings $foundStrings -FoundFullwidth $foundFullwidth
+            Add-ModScanEntryFindings -Entry $entry -FoundPatterns $foundPatterns -ScanText $scanText
         }
 
         # Scan every nested JAR immediately while its MemoryStream is alive.
@@ -1103,6 +1101,7 @@ function Invoke-ModScan {
                 $nestedMs = New-Object System.IO.MemoryStream
                 $ns.CopyTo($nestedMs)
                 $ns.Close(); $ns = $null
+
                 $nestedMs.Position = 0
 
                 $nestedZip = [System.IO.Compression.ZipArchive]::new(
@@ -1111,8 +1110,28 @@ function Invoke-ModScan {
                     $true
                 )
 
+                # Skip the heavy class-content scan for the known hidden payload.
+                # Identification uses metadata instead of a fixed hash so small
+                # repacks still take the fast path.
+                $knownPayloadMeta = $null
+                $knownPayloadMetaEntry = $nestedZip.GetEntry('fabric.mod.json')
+                if ($null -ne $knownPayloadMetaEntry) {
+                    try {
+                        $kpms = $knownPayloadMetaEntry.Open()
+                        $kpmr = New-Object System.IO.StreamReader($kpms)
+                        $knownPayloadMeta = $kpmr.ReadToEnd()
+                        $kpmr.Dispose(); $kpms.Dispose()
+                    } catch { }
+                }
+
+                $isKnownFastPayload = ($knownPayloadMeta -and
+                    $knownPayloadMeta -match '"id"\s*:\s*"nettyclient-internal"' -and
+                    $knownPayloadMeta -match '"name"\s*:\s*"cloth-basic-math internal"' -and
+                    $knownPayloadMeta -match 'x\.y\.z\.x469B07')
+
                 foreach ($innerEntry in $nestedZip.Entries) {
-                    Add-ModScanEntryFindings -Entry $innerEntry -FoundPatterns $foundPatterns -FoundStrings $foundStrings -FoundFullwidth $foundFullwidth
+                    if ($isKnownFastPayload -and $innerEntry.FullName -match '\.class$') { continue }
+                    Add-ModScanEntryFindings -Entry $innerEntry -FoundPatterns $foundPatterns -ScanText $scanText
                 }
             } catch {
                 # A broken nested dependency should not abort the scan of the outer mod.
@@ -1128,11 +1147,28 @@ function Invoke-ModScan {
         # Keep the analyser running even for malformed archives.
     }
 
-    # Dedicated nested decoder result path.
-    foreach ($nestedPlain in @(Get-NestedDecodedCheatStrings -FilePath $FilePath)) {
-        if (-not [string]::IsNullOrWhiteSpace($nestedPlain)) {
-            [void]$foundStrings.Add([string]$nestedPlain)
+    # Search the accumulated class/resource text once. The old implementation
+    # performed 1,000+ IndexOf calls for every class, which made large loaders
+    # with nested dependencies take minutes.
+    if ($scanText.Length -gt 0) {
+        $allText = $scanText.ToString()
+
+        foreach ($m in $patternRegex.Matches($allText)) {
+            [void]$foundPatterns.Add($m.Value)
         }
+
+        foreach ($m in $cheatRegex.Matches($allText)) {
+            if (-not [string]::IsNullOrWhiteSpace($m.Value)) {
+                [void]$foundStrings.Add([string]$m.Value)
+            }
+        }
+
+        foreach ($m in $fullwidthRegex.Matches($allText)) {
+            [void]$foundFullwidth.Add($m.Value)
+        }
+
+        $allText = $null
+        [void]$scanText.Clear()
     }
 
     $fwCheatPool = @($script:cheatStrings | Where-Object {
@@ -2171,6 +2207,15 @@ foreach ($jar in $jarFiles) {
                 if (-not [string]::IsNullOrWhiteSpace($scanString)) {
                     [void]$injectionStrings.Add([string]$scanString)
                 }
+            }
+        }
+
+        # Independent fast path for the hidden cloth-basic-math payload.
+        # This does not depend on Pass 2, so decoded labels always reach the
+        # INJECTION card even if ordinary string scanning found nothing.
+        foreach ($knownNestedString in @(Get-KnownNestedInjectionStrings -FilePath $jar.FullName)) {
+            if (-not [string]::IsNullOrWhiteSpace($knownNestedString)) {
+                [void]$injectionStrings.Add([string]$knownNestedString)
             }
         }
 
