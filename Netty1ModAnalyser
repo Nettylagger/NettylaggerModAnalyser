@@ -7,16 +7,37 @@ chcp 65001 | Out-Null
 Clear-Host
 
 function Write-HiddenBadge {
-    param($File)
-    $attributes = if ($File.Attributes -ne $null) { $File.Attributes } else { [System.IO.FileAttributes]::Normal }
-    $isHidden = ($attributes -band [System.IO.FileAttributes]::Hidden) -or $File.Hidden
-    $isSystem = ($attributes -band [System.IO.FileAttributes]::System) -or $File.System
-    if ($isHidden) {
+    param([System.IO.FileSystemInfo]$File)
+    if ($File.Attributes -band [System.IO.FileAttributes]::Hidden) {
         Write-Host " [MOD IS HIDDEN]" -ForegroundColor Yellow -NoNewline
     }
-    if ($isSystem) {
-        Write-Host " [SYSTEM FILE]" -ForegroundColor Magenta -NoNewline
+}
+
+function Test-IsHiddenPath {
+    param(
+        [System.IO.FileSystemInfo]$File,
+        [string]$RootPath
+    )
+
+    try {
+        $rootItem = Get-Item -LiteralPath $RootPath -Force -ErrorAction Stop
+        $rootFull = $rootItem.FullName.TrimEnd([char[]]"\/")
+        $item = $File
+
+        while ($null -ne $item) {
+            if (($item.Attributes -band [System.IO.FileAttributes]::Hidden) -ne 0) {
+                return $true
+            }
+
+            $itemFull = $item.FullName.TrimEnd([char[]]"\/")
+            if ($itemFull -ieq $rootFull) { break }
+            $item = $item.Parent
+        }
+    } catch {
+        return (($File.Attributes -band [System.IO.FileAttributes]::Hidden) -ne 0)
     }
+
+    return $false
 }
 
 $currentFont = (Get-ItemProperty "HKCU:\Console" -ErrorAction SilentlyContinue).FaceName
@@ -85,9 +106,8 @@ if (-not (Test-Path $modsPath -PathType Container)) {
     exit 1
 }
 
-# Normal scan is the default. Advanced/deep string decoding is disabled.
-$script:EnableAdvancedStringDecode = $false
-Write-Host "⚡ Normal scan enabled — strings, patterns and nested JARs are checked" -ForegroundColor DarkGray
+# Single scan mode: normal string/pattern scan.
+Write-Host "⚡ Normal scan mode enabled" -ForegroundColor DarkGray
 Write-Host
 
 Write-Host "📁 Scanning directory: $modsPath" -ForegroundColor Yellow
@@ -249,7 +269,8 @@ $cheatStrings = @(
     "AntiWeb", "AutoWeb", "Anti_trap", "Ａｎｔｉ Ｗｅｂ",
     "ＡｕｔｏＷｅｂ", "Ｐｌａｃｅｓ Ｗｅｂｓ Ｏｎ Ｅｎｅｍｉｅｓ", "lvstrng", "dqrkis",
     "selfdestruct", "self destruct", "WalksyCrystalOptimizerMod", "WalksyOptimizer",
-    "WalskyOptimizer", "Ｗａｌｋｓｙ Ｏｐｔｉｍｉｚｅｒ", "autoCrystalPlaceClock",    "AutoFirework", "ElytraSwap", "FastXP", "FastExp", "NoJumpDelay",
+    "WalskyOptimizer", "Ｗａｌｋｓｙ Ｏｐｔｉｍｉｚｅｒ", "autoCrystalPlaceClock", "AutoFirework",
+    "ElytraSwap", "FastXP", "FastExp", "NoJumpDelay",
     "ＥｌｙｔｒａＳｗａｐ", "Ｅｌｙｔｒａ Ｓｗａｐ", "PackSpoof", "Antiknockback",
     "catlean", "AuthBypass", "obfuscatedAuth", "LicenseCheckMixin",
     "BaseFinder", "invsee", "ItemExploit", "FreezePlayer",
@@ -454,40 +475,50 @@ $patternRegex = [regex]::new(
 $cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($s in $cheatStrings) { [void]$cheatStringSet.Add($s) }
 
-function Get-NormalizedCheatText {
-    param([string]$Text)
-    if ([string]::IsNullOrEmpty($Text)) { return "" }
-    $t = $Text.ToLowerInvariant()
-    if ($t -match '[\uFF01-\uFF5E]') {
-        $t = [regex]::Replace($t, '[\uFF01-\uFF5E]', { param($m) [string][char]([int][char]$m.Value - 0xFEE0) })
-    }
-    $t = $t -replace '[^a-z0-9]', ''
-    return $t.Replace('0','o').Replace('1','i').Replace('3','e').Replace('4','a').Replace('5','s').Replace('7','t').Replace('8','b').Replace('9','g')
-}
-
 function Get-FileSHA1 {
     param([string]$Path)
     return (Get-FileHash -Path $Path -Algorithm SHA1).Hash
 }
 
+function Get-DownloadOriginUrl {
+    param([string]$Path)
+
+    try {
+        $zoneData = Get-Content -Raw -Stream Zone.Identifier $Path -ErrorAction SilentlyContinue
+        if (-not $zoneData) { return "" }
+
+        $urls = @()
+        foreach ($m in [regex]::Matches($zoneData, '(?im)^(?:HostUrl|ReferrerUrl)=(.+)$')) {
+            $candidate = $m.Groups[1].Value.Trim()
+            if ($candidate) { $urls += $candidate }
+        }
+
+        foreach ($url in $urls) {
+            if ($url -match '(?i)modrinth\.com|curseforge\.com') { return $url }
+        }
+        if ($urls.Count -gt 0) { return $urls[0] }
+    } catch { }
+
+    return ""
+}
+
 function Get-DownloadSource {
     param([string]$Path)
-    $zoneData = Get-Content -Raw -Stream Zone.Identifier $Path -ErrorAction SilentlyContinue
-    if ($zoneData -match "HostUrl=(.+)") {
-        $url = $matches[1].Trim()
+    $url = Get-DownloadOriginUrl -Path $Path
+    if ($url) {
         if ($url -match "mediafire\.com")                                        { return "MediaFire" }
         elseif ($url -match "discord\.com|discordapp\.com|cdn\.discordapp\.com") { return "Discord" }
         elseif ($url -match "dropbox\.com")                                      { return "Dropbox" }
         elseif ($url -match "drive\.google\.com")                                { return "Google Drive" }
-        elseif ($url -match "mega\.nz|mega\.co\.nz")                             { return "MEGA" }
-        elseif ($url -match "github\.com")                                       { return "GitHub" }
-        elseif ($url -match "modrinth\.com")                                     { return "Modrinth" }
-        elseif ($url -match "curseforge\.com")                                   { return "CurseForge" }
-        elseif ($url -match "anydesk\.com")                                      { return "AnyDesk" }
-        elseif ($url -match "doomsdayclient\.com")                               { return "DoomsdayClient" }
-        elseif ($url -match "prestigeclient\.vip")                               { return "PrestigeClient" }
-        elseif ($url -match "198macros\.com")                                    { return "198Macros" }
-        elseif ($url -match "dqrkis\.xyz")                                       { return "Dqrkis" }
+        elseif ($url -match "mega\.nz|mega\.co\.nz")                            { return "MEGA" }
+        elseif ($url -match "github\.com")                                        { return "GitHub" }
+        elseif ($url -match "modrinth\.com")                                      { return "Modrinth" }
+        elseif ($url -match "curseforge\.com")                                    { return "CurseForge" }
+        elseif ($url -match "anydesk\.com")                                       { return "AnyDesk" }
+        elseif ($url -match "doomsdayclient\.com")                                { return "DoomsdayClient" }
+        elseif ($url -match "prestigeclient\.vip")                                { return "PrestigeClient" }
+        elseif ($url -match "198macros\.com")                                     { return "198Macros" }
+        elseif ($url -match "dqrkis\.xyz")                                        { return "Dqrkis" }
         else {
             if ($url -match "https?://(?:www\.)?([^/]+)") { return $matches[1] }
             return $url
@@ -497,9 +528,29 @@ function Get-DownloadSource {
 }
 
 function Format-DownloadCount {
-    param($Count)
-    if ($null -eq $Count -or "$Count" -eq "") { return "unavailable" }
-    try { return ([long]$Count).ToString("N0", [Globalization.CultureInfo]::InvariantCulture) } catch { return "$Count" }
+    param([long]$Count)
+    if ($Count -lt 0) { return "?" }
+    return $Count.ToString("N0", [System.Globalization.CultureInfo]::CurrentCulture)
+}
+
+function Query-ModrinthProject {
+    param([string]$IdOrSlug)
+
+    if ([string]::IsNullOrWhiteSpace($IdOrSlug)) { return $null }
+    try {
+        $encoded = [uri]::EscapeDataString($IdOrSlug)
+        $projectInfo = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/project/$encoded" -Method Get -UseBasicParsing -ErrorAction Stop
+        if ($projectInfo.id) {
+            return @{
+                Name = $projectInfo.title
+                Slug = $projectInfo.slug
+                ProjectId = $projectInfo.id
+                Downloads = [long]$projectInfo.downloads
+                DownloadSource = "Modrinth"
+            }
+        }
+    } catch { }
+    return $null
 }
 
 function Query-Modrinth {
@@ -507,57 +558,50 @@ function Query-Modrinth {
     try {
         $versionInfo = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/version_file/$Hash" -Method Get -UseBasicParsing -ErrorAction Stop
         if ($versionInfo.project_id) {
-            $projectInfo = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/project/$($versionInfo.project_id)" -Method Get -UseBasicParsing -ErrorAction Stop
-            return @{ Name = $projectInfo.title; Slug = $projectInfo.slug; Downloads = $projectInfo.downloads; VerificationSource = "Modrinth" }
+            $projectInfo = Query-ModrinthProject -IdOrSlug $versionInfo.project_id
+            if ($projectInfo) { return $projectInfo }
         }
     } catch { }
-    return @{ Name = ""; Slug = ""; Downloads = $null; VerificationSource = "" }
+    return @{ Name = ""; Slug = ""; ProjectId = ""; Downloads = -1; DownloadSource = "" }
 }
 
-function Query-CurseForge {
-    param([string]$Hash)
+function Query-ModrinthByName {
+    param([string]$Name)
 
-    # curse.tools exposes the CurseForge fingerprint lookup without requiring a private API key.
-    $uris = @(
-        "https://api.curse.tools/v1/fingerprints/$Hash",
-        "https://api.curse.tools/v1/fingerprint/$Hash"
-    )
-    foreach ($uri in $uris) {
-        try {
-            $result = Invoke-RestMethod -Uri $uri -Method Get -UseBasicParsing -UserAgent "NettyModAnalyser/1.0" -TimeoutSec 20 -ErrorAction Stop
-            $matches = @($result.data)
-            if ($matches.Count -eq 0) { $matches = @($result) }
-            foreach ($match in $matches) {
-                $mod = if ($match.mod) { $match.mod } elseif ($match.project) { $match.project } else { $match }
-                $file = if ($match.file) { $match.file } else { $match }
-                $name = if ($mod.name) { $mod.name } elseif ($mod.title) { $mod.title } elseif ($match.name) { $match.name } else { "" }
-                if (-not $name) { continue }
-                $downloads = $mod.downloadCount
-                if ($null -eq $downloads) { $downloads = $mod.downloads }
-                if ($null -eq $downloads) { $downloads = $match.downloadCount }
-                if ($null -eq $downloads) { $downloads = $match.downloads }
-                return @{ Name = $name; Downloads = $downloads; VerificationSource = "CurseForge" }
-            }
-        } catch { }
-    }
-    return @{ Name = ""; Downloads = $null; VerificationSource = "" }
-}
-
-function Get-KnownNestedCheatJars {
-    param([string]$FilePath)
-    $hits = [System.Collections.Generic.List[string]]::new()
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
     try {
-        $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
-        foreach ($entry in $zip.Entries) {
-            $name = [System.IO.Path]::GetFileName($entry.FullName)
-            if ($entry.FullName -match "(?i)^META-INF/jars/.+\.jar$" -and
-                $name -match "(?i)^cloth[-_ ]?basic[-_ ]?math\.jar$") {
-                $hits.Add($name)
+        $query = [uri]::EscapeDataString($Name)
+        $search = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/search?query=$query&limit=10" -Method Get -UseBasicParsing -ErrorAction Stop
+        if (-not $search.hits) { return $null }
+
+        $normalize = {
+            param([string]$Value)
+            if ($null -eq $Value) { return "" }
+            return (($Value.ToLowerInvariant()) -replace '[^a-z0-9]', '')
+        }
+        $wanted = & $normalize $Name
+
+        $exact = @($search.hits | Where-Object {
+            $_.project_type -eq 'mod' -and (
+                $_.title -ieq $Name -or
+                (& $normalize $_.title) -eq $wanted -or
+                (& $normalize $_.slug) -eq $wanted
+            )
+        } | Select-Object -First 1)
+
+        if ($exact.Count -gt 0) {
+            $hit = $exact[0]
+            return @{
+                Name = $hit.title
+                Slug = $hit.slug
+                ProjectId = $hit.project_id
+                Downloads = [long]$hit.downloads
+                DownloadSource = "Modrinth"
             }
         }
-        $zip.Dispose()
     } catch { }
-    return $hits
+
+    return $null
 }
 
 function Query-Megabase {
@@ -569,190 +613,273 @@ function Query-Megabase {
     return $null
 }
 
-$fullwidthRegex = [regex]::new(
-    "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}",
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
+function Convert-ObjectToCompactJson {
+    param($Data)
+    try { return ($Data | ConvertTo-Json -Depth 12 -Compress) }
+    catch { return "" }
+}
 
-function Get-BytecodeIntConstantBefore {
-    param(
-        [byte[]]$Bytes,
-        [int]$Position,
-        [int]$LookBehind = 24
+function Get-ModrinthIdentifierFromData {
+    param($Data)
+    $json = Convert-ObjectToCompactJson -Data $Data
+    if (-not $json) { return "" }
+
+    if ($json -match '(?i)https?://(?:www\.)?modrinth\.com/(?:mod|plugin|datapack)/([^/"?#]+)') {
+        return $matches[1]
+    }
+    if ($json -match '(?i)"(?:modrinthSlug|modrinth_slug|modrinthId|modrinth_id)"\s*:\s*"([^"\\]+)"') {
+        return $matches[1]
+    }
+    return ""
+}
+
+function Normalize-CurseForgeProjectPath {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return "" }
+
+    $valueClean = $Value.Trim()
+    if ($valueClean -match '(?i)/api/v1/mods/(\d+)(?:/|$)') { return $matches[1] }
+    if ($valueClean -match '(?i)https?://(?:www\.)?curseforge\.com/(.+)$') { $valueClean = $matches[1] }
+    $valueClean = ($valueClean -split '[?#]')[0].Trim('/')
+    $valueClean = $valueClean -replace '(?i)/files(?:/.*)?$', ''
+    $valueClean = $valueClean -replace '(?i)/download(?:/.*)?$', ''
+    return $valueClean.Trim('/')
+}
+
+function Get-CurseForgeProjectPathFromData {
+    param($Data)
+    $json = Convert-ObjectToCompactJson -Data $Data
+    if (-not $json) { return "" }
+
+    if ($json -match '(?i)https?://(?:www\.)?curseforge\.com/([^"\\]+)') {
+        return (Normalize-CurseForgeProjectPath -Value ("https://www.curseforge.com/" + $matches[1]))
+    }
+    if ($json -match '(?i)"(?:curseforgeId|curseforge_id|cfId|cf_id)"\s*:\s*"?(\d+)"?') {
+        return $matches[1]
+    }
+    if ($json -match '(?i)"(?:curseforgeSlug|curseforge_slug|cfSlug|cf_slug)"\s*:\s*"([^"\\]+)"') {
+        return "minecraft/mc-mods/$($matches[1])"
+    }
+    return ""
+}
+
+function Query-CurseForgeByProjectPath {
+    param([string]$ProjectPath)
+
+    $normalized = Normalize-CurseForgeProjectPath -Value $ProjectPath
+    if ([string]::IsNullOrWhiteSpace($normalized)) { return $null }
+
+    try {
+        $encodedPath = (($normalized -split '/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
+        $info = Invoke-RestMethod -Uri "https://api.cfwidget.com/$encodedPath" -Method Get -UseBasicParsing -ErrorAction Stop
+        $count = -1
+        if ($null -ne $info.downloads -and $null -ne $info.downloads.total) {
+            $count = [long]$info.downloads.total
+        } elseif ($null -ne $info.downloadCount) {
+            $count = [long]$info.downloadCount
+        }
+
+        if ($count -ge 0) {
+            $title = if ($info.title) { $info.title } elseif ($info.name) { $info.name } else { "" }
+            return @{
+                Name = $title
+                Downloads = $count
+                DownloadSource = "CurseForge"
+                ProjectPath = $normalized
+            }
+        }
+    } catch { }
+
+    return $null
+}
+
+function Get-MegabaseStoredDownloadInfo {
+    param($Data)
+    $json = Convert-ObjectToCompactJson -Data $Data
+    if (-not $json) { return $null }
+
+    $patterns = @(
+        @{ Source = 'Modrinth'; Regex = '(?i)"(?:modrinthDownloads|modrinth_downloads)"\s*:\s*(\d+)' },
+        @{ Source = 'CurseForge'; Regex = '(?i)"(?:curseforgeDownloads|curseforge_downloads|cfDownloads|cf_downloads)"\s*:\s*(\d+)' }
     )
-
-    $start = [Math]::Max(0, $Position - $LookBehind)
-    for ($i = $Position - 1; $i -ge $start; $i--) {
-        $op = $Bytes[$i]
-        if ($op -eq 0x10 -and ($i + 1) -lt $Position) {
-            $v = [int]$Bytes[$i + 1]
-            if ($v -ge 128) { $v -= 256 }
-            return $v
-        }
-        if ($op -eq 0x11 -and ($i + 2) -lt $Position) {
-            return [int16](($Bytes[$i + 1] -shl 8) -bor $Bytes[$i + 2])
-        }
-        if ($op -ge 0x03 -and $op -le 0x08) {
-            return ($op - 0x03)
-        }
-        if ($op -eq 0x02) {
-            return -1
+    foreach ($p in $patterns) {
+        if ($json -match $p.Regex) {
+            return @{ Downloads = [long]$matches[1]; DownloadSource = $p.Source }
         }
     }
 
     return $null
 }
 
-function Get-CheatCandidateKeys {
+$fullwidthRegex = [regex]::new(
+    "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}",
+    [System.Text.RegularExpressions.RegexOptions]::Compiled
+)
+
+function Get-ClassConstantPoolData {
     param([byte[]]$Bytes)
 
-    $keys = [System.Collections.Generic.HashSet[int]]::new()
-    foreach ($k in @(0, 1, 2, 3, 7, 13, 16, 23, 31, 32, 42, 55, 64, 69, 85, 90, 96, 100, 106, 127, 128, 170, 197, 255)) {
-        [void]$keys.Add([int]$k)
-    }
-    if (-not $Bytes -or $Bytes.Length -eq 0) { return @($keys) }
+    if ($null -eq $Bytes -or $Bytes.Length -lt 10) { return $null }
+    if ($Bytes[0] -ne 0xCA -or $Bytes[1] -ne 0xFE -or $Bytes[2] -ne 0xBA -or $Bytes[3] -ne 0xBE) { return $null }
 
-    $plainChars = [System.Collections.Generic.HashSet[byte]]::new()
-    foreach ($s in $script:cheatStrings) {
-        if ([string]::IsNullOrEmpty($s)) { continue }
-        $chars = $s.ToCharArray()
-        foreach ($c in @($chars[0], $(if ($chars.Length -gt 1) { $chars[1] } else { $null }))) {
-            if ($null -ne $c -and [int][char]$c -le 255) {
-                [void]$plainChars.Add([byte][char]$c)
+    $utf8Strings = [System.Collections.Generic.List[string]]::new()
+    $integers    = [System.Collections.Generic.HashSet[int]]::new()
+
+    try {
+        $cpCount = ([int]$Bytes[8] -shl 8) -bor [int]$Bytes[9]
+        $pos = 10
+        $i = 1
+
+        while ($i -lt $cpCount -and $pos -lt $Bytes.Length) {
+            $tag = [int]$Bytes[$pos]
+            $pos++
+
+            switch ($tag) {
+                1 { # CONSTANT_Utf8
+                    if ($pos + 2 -gt $Bytes.Length) { return $null }
+                    $len = ([int]$Bytes[$pos] -shl 8) -bor [int]$Bytes[$pos + 1]
+                    $pos += 2
+                    if ($len -lt 0 -or $pos + $len -gt $Bytes.Length) { return $null }
+                    if ($len -gt 0) {
+                        $s = [System.Text.Encoding]::UTF8.GetString($Bytes, $pos, $len)
+                        $utf8Strings.Add($s)
+                    }
+                    $pos += $len
+                }
+                3 { # CONSTANT_Integer
+                    if ($pos + 4 -gt $Bytes.Length) { return $null }
+                    $u = (([uint64]$Bytes[$pos] -shl 24) -bor ([uint64]$Bytes[$pos + 1] -shl 16) -bor ([uint64]$Bytes[$pos + 2] -shl 8) -bor [uint64]$Bytes[$pos + 3])
+                    if ($u -ge 2147483648) {
+                        [void]$integers.Add([int]([int64]$u - 4294967296))
+                    } else {
+                        [void]$integers.Add([int]$u)
+                    }
+                    $pos += 4
+                }
+                4 { $pos += 4 } # CONSTANT_Float
+                5 { $pos += 8; $i++ } # CONSTANT_Long (two CP slots)
+                6 { $pos += 8; $i++ } # CONSTANT_Double (two CP slots)
+                7 { $pos += 2 } # CONSTANT_Class
+                8 { $pos += 2 } # CONSTANT_String
+                9 { $pos += 4 } # CONSTANT_Fieldref
+                10 { $pos += 4 } # CONSTANT_Methodref
+                11 { $pos += 4 } # CONSTANT_InterfaceMethodref
+                12 { $pos += 4 } # CONSTANT_NameAndType
+                15 { $pos += 3 } # CONSTANT_MethodHandle
+                16 { $pos += 2 } # CONSTANT_MethodType
+                17 { $pos += 4 } # CONSTANT_Dynamic
+                18 { $pos += 4 } # CONSTANT_InvokeDynamic
+                19 { $pos += 2 } # CONSTANT_Module
+                20 { $pos += 2 } # CONSTANT_Package
+                default { return $null }
             }
+
+            if ($pos -gt $Bytes.Length) { return $null }
+            $i++
         }
-    }
-    foreach ($c in @([byte][char]'A',[byte][char]'a',[byte][char]'d',[byte][char]'D',[byte][char]'h',[byte][char]'_',[byte][char]'.',[byte][char]' ')) {
-        [void]$plainChars.Add($c)
+    } catch {
+        return $null
     }
 
-    $maxProbe = [Math]::Min(6, $Bytes.Length)
-    foreach ($plain in $plainChars) {
-        for ($i = 0; $i -lt $maxProbe; $i++) {
-            $reverse = (($Bytes.Length - 1 - $i) -band 255)
-            [void]$keys.Add((($Bytes[$i] -bxor $plain) -band 255))
-            [void]$keys.Add((($Bytes[$i] -bxor $plain -bxor ($i -band 255)) -band 255))
-            [void]$keys.Add((($Bytes[$i] -bxor $plain -bxor $reverse) -band 255))
-            [void]$keys.Add((($Bytes[$i] - $plain - $i) -band 255))
-            [void]$keys.Add((($plain - $Bytes[$i] - $i) -band 255))
-        }
-    }
-
-    return @($keys)
+    return @{ Utf8Strings = $utf8Strings; Integers = $integers }
 }
 
-function Get-ObfuscatedByteArrayStrings {
+function Convert-ObfuscatedHexStage1 {
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value) -or ($Value.Length % 4) -ne 0 -or $Value -notmatch '^[0-9A-Fa-f]+$') {
+        return $null
+    }
+
+    try {
+        $count = [int]($Value.Length / 4)
+        $chars = New-Object char[] $count
+
+        for ($i = 0; $i -lt $count; $i++) {
+            $v = [Convert]::ToInt32($Value.Substring($i * 4, 4), 16)
+            $indexMask = (($i * 131) -band 0xFFFF)
+            $chars[$i] = [char](($v -bxor 23089 -bxor $indexMask) -band 0xFFFF)
+        }
+
+        return -join $chars
+    } catch {
+        return $null
+    }
+}
+
+function Convert-ObfuscatedHexStage2 {
+    param(
+        [string]$Value,
+        [int]$Seed
+    )
+
+    if ([string]::IsNullOrEmpty($Value) -or ($Value.Length % 4) -ne 0 -or $Value -notmatch '^[0-9A-Fa-f]+$') {
+        return $null
+    }
+
+    try {
+        $count = [int]($Value.Length / 4)
+        $chars = New-Object char[] $count
+
+        $state = [int64]$Seed
+        if ($state -lt 0) { $state += 4294967296 }
+        $state = [uint64]$state
+
+        for ($i = 0; $i -lt $count; $i++) {
+            $v = [Convert]::ToInt32($Value.Substring($i * 4, 4), 16)
+            $state = (($state * [uint64]1664525) + [uint64]1013904223) % [uint64]4294967296
+            $key = [int](($state -shr 16) -band 0xFFFF)
+            $chars[$i] = [char](($v -bxor $key) -band 0xFFFF)
+        }
+
+        return -join $chars
+    } catch {
+        return $null
+    }
+}
+
+function Get-DecodedObfuscatedStrings {
     param([byte[]]$Bytes)
 
-    $decoded = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $decoded = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $cp = Get-ClassConstantPoolData -Bytes $Bytes
+    if ($null -eq $cp) { return $decoded }
 
-    function Add-DecodedString {
-        param([byte[]]$PlainBytes)
-        try {
-            $s = [System.Text.Encoding]::UTF8.GetString($PlainBytes)
-            if ($s.Length -ge 3 -and $s.Length -le 220 -and $s -match '^[\u0009\u000A\u000D\u0020-\u007E]+$') {
-                [void]$decoded.Add($s)
-            }
-        } catch { }
-    }
+    $hexValues = @($cp.Utf8Strings | Where-Object {
+        $_.Length -ge 16 -and $_.Length -le 131072 -and ($_.Length % 4) -eq 0 -and $_ -match '^[0-9A-Fa-f]+$'
+    })
 
-    function Decode-XorVariants {
-        param([byte[]]$Encoded)
+    if ($hexValues.Count -eq 0) { return $decoded }
 
-        $len = $Encoded.Length
-        foreach ($key in (Get-CheatCandidateKeys -Bytes $Encoded)) {
-            $plainIndex = New-Object byte[] $len
-            $plainPlain = New-Object byte[] $len
-            $plainReverseIndex = New-Object byte[] $len
-            $plainAddIndex = New-Object byte[] $len
+    $seeds = @($cp.Integers)
 
-            for ($j = 0; $j -lt $len; $j++) {
-                $plainIndex[$j] = [byte](($Encoded[$j] -bxor $key -bxor ($j -band 0xFF)) -band 0xFF)
-                $plainPlain[$j] = [byte](($Encoded[$j] -bxor $key) -band 0xFF)
-                $plainReverseIndex[$j] = [byte](($Encoded[$j] -bxor $key -bxor (($len - 1 - $j) -band 0xFF)) -band 0xFF)
-                $plainAddIndex[$j] = [byte]((($Encoded[$j] - $key - $j) -band 0xFF))
-            }
+    foreach ($encoded in $hexValues) {
+        $stage1 = Convert-ObfuscatedHexStage1 -Value $encoded
+        if ([string]::IsNullOrEmpty($stage1)) { continue }
 
-            Add-DecodedString -PlainBytes $plainIndex
-            Add-DecodedString -PlainBytes $plainPlain
-            Add-DecodedString -PlainBytes $plainReverseIndex
-            Add-DecodedString -PlainBytes $plainAddIndex
-        }
-    }
-
-    for ($i = 0; $i -lt ($Bytes.Length - 2); $i++) {
-        # Java bytecode: newarray byte = BC 08. Length is usually pushed immediately before it.
-        if ($Bytes[$i] -ne 0xBC -or $Bytes[$i + 1] -ne 0x08) { continue }
-
-        $len = Get-BytecodeIntConstantBefore -Bytes $Bytes -Position $i -LookBehind 4
-        if ($null -eq $len -or $len -lt 3 -or $len -gt 220) { continue }
-
-        $encoded = New-Object byte[] $len
-        $stores = 0
-        $scanEnd = [Math]::Min($Bytes.Length - 1, $i + 2 + ($len * 40) + 240)
-
-        for ($p = $i + 2; $p -le $scanEnd -and $stores -lt $len; $p++) {
-            # bastore
-            if ($Bytes[$p] -ne 0x54) { continue }
-
-            $value = Get-BytecodeIntConstantBefore -Bytes $Bytes -Position $p -LookBehind 18
-            if ($null -eq $value) { continue }
-
-            $encoded[$stores] = [byte]($value -band 0xFF)
-            $stores++
+        # Some samples may use the first decoder directly.
+        if ($stage1.Length -le 2048 -and $stage1 -notmatch '[\x00-\x08\x0B\x0C\x0E-\x1F]') {
+            [void]$decoded.Add($stage1)
         }
 
-        if ($stores -ne $len) { continue }
+        # Known chain used by the nested clothbasicmath sample:
+        # stage1(hex) -> seeded LCG xor -> stage1(hex) -> plaintext.
+        if (($stage1.Length % 4) -ne 0 -or $stage1 -notmatch '^[0-9A-Fa-f]+$') { continue }
 
-        Decode-XorVariants -Encoded $encoded
-    }
+        foreach ($seed in $seeds) {
+            if ($seed -eq 23089 -or $seed -eq 65535 -or $seed -eq 1664525 -or $seed -eq 1013904223) { continue }
 
-    # Java bytecode: newarray char = BC 05. Try static char-array strings.
-    for ($i = 0; $i -lt ($Bytes.Length - 2); $i++) {
-        if ($Bytes[$i] -ne 0xBC -or $Bytes[$i + 1] -ne 0x05) { continue }
+            $stage2 = Convert-ObfuscatedHexStage2 -Value $stage1 -Seed $seed
+            if ([string]::IsNullOrEmpty($stage2)) { continue }
+            if (($stage2.Length % 4) -ne 0 -or $stage2 -notmatch '^[0-9A-Fa-f]+$') { continue }
 
-        $len = Get-BytecodeIntConstantBefore -Bytes $Bytes -Position $i -LookBehind 4
-        if ($null -eq $len -or $len -lt 3 -or $len -gt 220) { continue }
+            $plain = Convert-ObfuscatedHexStage1 -Value $stage2
+            if ([string]::IsNullOrEmpty($plain) -or $plain.Length -gt 2048) { continue }
+            if ($plain -match '[\x00-\x08\x0B\x0C\x0E-\x1F]') { continue }
 
-        $chars = New-Object int[] $len
-        $stores = 0
-        $scanEnd = [Math]::Min($Bytes.Length - 1, $i + 2 + ($len * 40) + 240)
-
-        for ($p = $i + 2; $p -le $scanEnd -and $stores -lt $len; $p++) {
-            # castore
-            if ($Bytes[$p] -ne 0x55) { continue }
-
-            $value = Get-BytecodeIntConstantBefore -Bytes $Bytes -Position $p -LookBehind 18
-            if ($null -eq $value) { continue }
-
-            $chars[$stores] = ($value -band 0xFFFF)
-            $stores++
+            [void]$decoded.Add($plain)
         }
-
-        if ($stores -ne $len) { continue }
-
-        try {
-            $sb = New-Object System.Text.StringBuilder
-            foreach ($c in $chars) { [void]$sb.Append([char]$c) }
-            $s = $sb.ToString()
-            if ($s.Length -ge 3 -and $s.Length -le 220 -and $s -match '^[\u0009\u000A\u000D\u0020-\u007E]+$') {
-                [void]$decoded.Add($s)
-            }
-        } catch { }
     }
-
-    # Pull Base64-looking constants from the class bytes and decode them.
-    try {
-        $ascii = [System.Text.Encoding]::ASCII.GetString($Bytes)
-        foreach ($m in [regex]::Matches($ascii, '(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{12,}={0,2}(?![A-Za-z0-9+/=])')) {
-            $candidate = $m.Value
-            if (($candidate.Length % 4) -ne 0) { continue }
-            try {
-                $plain = [Convert]::FromBase64String($candidate)
-                Add-DecodedString -PlainBytes $plain
-            } catch { }
-        }
-    } catch { }
 
     return $decoded
 }
@@ -779,10 +906,6 @@ function Invoke-ModScan {
         foreach ($e in $archive.Entries) { $allEntries.Add($e) }
 
         foreach ($nj in ($archive.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })) {
-            $nestedName = [System.IO.Path]::GetFileName($nj.FullName)
-            if ($nestedName -match '(?i)^cloth[-_ ]?basic[-_ ]?math\.jar$') {
-                [void]$foundPatterns.Add("Nested cheat JAR: $nestedName")
-            }
             try {
                 $ns = $nj.Open()
                 $ms = New-Object System.IO.MemoryStream
@@ -814,66 +937,11 @@ function Invoke-ModScan {
                         if ($utf8.Contains($s))  { [void]$foundStrings.Add($s) }
                     }
 
-                    $hasAdvancedDecodeContext = $false
-                    if ($name -match '\.class$' -and $script:EnableAdvancedStringDecode) {
-                        $asciiNormalized = $ascii -replace '[^A-Za-z0-9]+', ''
-                        $nameNormalized  = $name  -replace '[^A-Za-z0-9]+', ''
-
-                        $hasDecoderShape =
-                            $ascii.Contains("StringDecoder") -or
-                            $ascii.Contains("[[B") -or
-                            $ascii.Contains("Base64") -or
-                            $ascii.Contains("fromBase64String") -or
-                            $ascii.Contains("([BI)Ljava/lang/String;") -or
-                            $ascii.Contains("([BB)Ljava/lang/String;") -or
-                            $ascii.Contains("([CI)Ljava/lang/String;") -or
-                            $ascii.Contains("java/lang/String") -or
-                            $ascii.Contains("UTF_8")
-
-                        $hasCheatContext =
-                            $name -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithium/fabric/(helper|compat)|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
-                            $nameNormalized -match "Auto|Aura|Crystal|Totem|Mace|Anchor|Trigger|Aim|Reach|Velocity|Disabler|Bypass|Clicker|ESP|XRay|Freecam|Scaffold|Nuker|Flight|Fly|Speed|Timer|NoSlow|NoFall|Critical|Hitbox|Bow|Pearl|Web|Pot|Refill|Offhand|Fake|Spoof|Packet|Blink|Phase|Step|Sprint|Elytra|Chest|Inv|Surround|Burrow|Trap|Hole|Bed|City|Mine|Macro|WTap|Nametag|Tracers|Storage|Ore|Finder|Meteor|Vape|Liquid|Rusher|Future|Prestige|Doomsday|Asteria|Argon|Xenon|Gypsy|Krypton|Virgin|Catlean|Hellion|Aristois|Impact|Inertia|Konas|Pandaware|Astolfo|Novoline|Moon|Rise|Intent|FDP|Bluex|Kami|Wurst|Bleach|Baritone|ThunderHack|Exhibition|Novoclient|Token|Session|Logger|Grabber|Stealer|Backdoor|Remote|Reverse|KeyLogger|Webhook|Discord|chainlibs|imgui|jnativehook|lithiumfabric|ConfigBridge|BuilderFactory|ParserEngine|LoaderBridge|SyncDispatcher" -or
-                            $asciiNormalized -match "AutoCrystal|AutoHitCrystal|CrystalAura|AutoAnchor|AnchorAura|AnchorFill|DoubleAnchor|SafeAnchor|AirAnchor|BedAura|AutoBed|BedBomb|AutoTotem|InventoryTotem|HoverTotem|OffhandTotem|TotemSwitch|AutoPot|AutoPotRefill|AutoArmor|AutoMace|MaceSwap|StunSlam|KillAura|ClickAura|MultiAura|ForceField|LegitAura|TriggerBot|AimAssist|AimBot|AutoAim|SilentAim|AimLock|HeadSnap|BowAimbot|BowSpam|AutoBow|AutoCrit|Criticals|CritBypass|ReachHack|LongReach|ExtendReach|HitboxExpand|Velocity|AntiKB|NoKnockback|GrimVelocity|VelocitySpoof|Disabler|GrimDisabler|VerusDisabler|VulcanBypass|MatrixBypass|AACBypass|IntaveBypass|WatchdogBypass|Bypass|AutoClicker|DoubleClicker|JitterClick|ButterflyClick|CPSBoost|FastPlace|FastXP|FastExp|FastUse|FastBreak|Nuker|InstantBreak|PacketMine|AutoMine|AutoCity|CityBoss|Burrow|SelfTrap|Surround|AntiSurround|HoleFiller|AntiBurrow|AutoWeb|AntiWeb|WebMacro|NoWeb|AutoPearl|KeyPearl|PearlPhase|Phase|PacketFly|BoatFly|FlyHack|CreativeFlight|AirJump|SpeedHack|BHop|BunnyHop|Timer|GameSpeed|StepHack|HighStep|FastClimb|NoSlow|NoSlowdown|NoFall|AntiFall|SafeFall|WaterWalk|LavaWalk|Scaffold|ScaffoldWalk|FastBridge|AutoBridge|BuildHelper|ElytraSpeed|InstantElytra|ElytraSwap|AutoFirework|ChestSteal|ChestStealer|InvManager|InventoryManager|InvMove|FakeInv|FakeLag|PingSpoof|FakeLatency|FakePing|WTap|SprintReset|JumpReset|AutoGap|AutoEat|AutoRespawn|AntiAFK|AutoSprint|PlayerESP|BlockESP|MobESP|ItemESP|StorageESP|ChestESP|OreESP|XRay|XRayHack|OreFinder|CaveFinder|BaseFinder|StashFinder|TrailFinder|Tracers|NameTags|NameTagsHack|Nametag|Freecam|NoClip|WallHack|NewChunks|ChunkBorders|TargetHUD|ReachDisplay|PackSpoof|SpoofRotation|PositionSpoof|PacketWalk|PacketSneak|PacketCancel|PacketDupe|PacketSpam|SelfDestruct|HideClient|MeteorClient|meteordevelopment|VapeClient|VapeLite|vapegg|LiquidBounce|liquidbounce|netccbluex|ccbluex|FDP|RusherHack|FutureClient|Aristois|ImpactClient|Inertia|Konas|Pandaware|Astolfo|Novoline|Novoware|MoonClient|RiseClient|IntentClient|ThunderHack|Wurst|BleachHack|Baritone|Kami|Exhibition|PrestigeClient|DoomsdayClient|Asteria|ArgonClient|XenonClient|GypsyClient|VirginClient|CatleanClient|Hellion|Krypton|devkrypton|skidkrypton|TokenLogger|TokenGrabber|SessionStealer|DiscordToken|Webhook|RemoteAccess|ReverseShell|Backdoor|KeyLogger|C2Server|dqrkis|dqris|dqrkisxyz|dqrisxyz|5138134200|orgchainlibs|imgui|imguibinding|imguigl3|imguiglfw|jnativehook|JNativeHook|GlobalScreen|NativeKeyListener"
-
-                        $hasAdvancedDecodeContext = $hasDecoderShape -and $hasCheatContext
-                    }
-
-                    $hasByteNewArray = $false
-                    $hasCharNewArray = $false
-                    if ($hasAdvancedDecodeContext) {
-                        for ($bi = 0; $bi -lt ($bytes.Length - 1); $bi++) {
-                            if ($bytes[$bi] -eq 0xBC -and $bytes[$bi + 1] -eq 0x08) {
-                                $hasByteNewArray = $true
-                            }
-                            if ($bytes[$bi] -eq 0xBC -and $bytes[$bi + 1] -eq 0x05) {
-                                $hasCharNewArray = $true
-                            }
-                            if ($hasByteNewArray -and $hasCharNewArray) {
-                                break
-                            }
-                        }
-                    }
-
-                    if ($script:EnableAdvancedStringDecode -and
-                        $name -match '\.class$' -and
-                        ($hasByteNewArray -or $hasCharNewArray)) {
-                        $decodedStrings = Get-ObfuscatedByteArrayStrings -Bytes $bytes
-                        foreach ($decoded in $decodedStrings) {
-                            $decodedHit = $false
+                    if ($name -match '\.class$') {
+                        foreach ($decodedString in (Get-DecodedObfuscatedStrings -Bytes $bytes)) {
                             foreach ($s in $cheatStringSet) {
-                                if ($decoded.Contains($s)) {
-                                    [void]$foundStrings.Add("[obfuscated] $decoded")
-                                    $decodedHit = $true
-                                    break
-                                }
-                            }
-
-                            # Also flag decoded module/config strings when their exact spelling
-                            # is not in the signature list (e.g. renamed or lightly mutated cheats).
-                            if (-not $decodedHit) {
-                                $normalizedDecoded = Get-NormalizedCheatText -Text $decoded
-                                if ($normalizedDecoded -match '(autocrystal|crystalaura|autoanchor|anchoraura|doubleanchor|safeanchor|autototem|hovertotem|autopot|autoarmor|maceswap|killaura|clickaura|triggerbot|aimassist|silentaim|reachhack|velocity|antikb|noslow|packetfly|scaffold|nuker|cheststeal|fakeinv|fakelag|pingspoof|selfdestruct|tokenlogger|sessionstealer|webhook|backdoor|keylogger)') {
-                                    [void]$foundStrings.Add("[obfuscated] $decoded")
+                                if ($decodedString.IndexOf($s, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                                    [void]$foundStrings.Add($s)
                                 }
                             }
                         }
@@ -964,21 +1032,7 @@ function Invoke-ObfuscationScan {
             "Smoke"          = @("SmokeObf", "smoke.obf")
         }
 
-        $allEntries = [System.Collections.Generic.List[object]]::new()
-        $innerArchives = [System.Collections.Generic.List[object]]::new()
-        foreach ($entry in $archive.Entries) { $allEntries.Add($entry) }
-        foreach ($nested in ($archive.Entries | Where-Object { $_.FullName -match "(?i)^META-INF/jars/.+\.jar$" })) {
-            try {
-                $stream = $nested.Open()
-                $memory = New-Object System.IO.MemoryStream
-                $stream.CopyTo($memory); $stream.Close(); $memory.Position = 0
-                $inner = [System.IO.Compression.ZipArchive]::new($memory, [System.IO.Compression.ZipArchiveMode]::Read)
-                $innerArchives.Add($inner)
-                foreach ($innerEntry in $inner.Entries) { $allEntries.Add($innerEntry) }
-            } catch { }
-        }
-
-        foreach ($entry in $allEntries) {
+        foreach ($entry in $archive.Entries) {
             $name = $entry.FullName
 
             if ($name -match "\.class$") {
@@ -1019,7 +1073,6 @@ function Invoke-ObfuscationScan {
             }
         }
 
-        foreach ($inner in $innerArchives) { try { $inner.Dispose() } catch { } }
         $archive.Dispose()
 
         if ($totalClass -lt 5) { return $flags }
@@ -1094,13 +1147,6 @@ function Invoke-BypassScan {
 
         $nestedJars   = @($zip.Entries | Where-Object { $_.FullName -match "^META-INF/jars/.+\.jar$" })
         $outerClasses = @($zip.Entries | Where-Object { $_.FullName -match "\.class$" })
-
-        foreach ($nj in $nestedJars) {
-            $nestedName = [System.IO.Path]::GetFileName($nj.FullName)
-            if ($nestedName -match '(?i)^cloth[-_ ]?basic[-_ ]?math\.jar$') {
-                $flags.Add("Known cheat nested JAR — clothbasicmath payload detected")
-            }
-        }
 
         $suspiciousNestedJars = @()
         foreach ($nj in $nestedJars) {
@@ -1635,10 +1681,12 @@ function Write-SuspiciousCard {
     Write-Host "  │ " -ForegroundColor DarkYellow -NoNewline
     Write-Host " FLAGGED " -ForegroundColor White -BackgroundColor DarkYellow -NoNewline
     Write-Host "  " -NoNewline
-    Write-Host $Mod.FileName -ForegroundColor Yellow -NoNewline
-    Write-HiddenBadge -File $Mod
-    Write-Host
+    Write-Host $Mod.FileName -ForegroundColor Yellow
     Write-Host ("  │ " + ("─" * 66)) -ForegroundColor DarkYellow
+
+    if ($Mod.Hidden) {
+        Write-Host "  │  MOD IS HIDDEN" -ForegroundColor Yellow
+    }
 
     if ($Mod.Patterns.Count -gt 0) {
         Write-Host "  │" -ForegroundColor DarkYellow
@@ -1683,10 +1731,12 @@ function Write-InjectionCard {
     Write-Host "  │ " -ForegroundColor DarkYellow -NoNewline
     Write-Host " INJECTION " -ForegroundColor White -BackgroundColor DarkYellow -NoNewline
     Write-Host "  " -NoNewline
-    Write-Host $Mod.FileName -ForegroundColor Yellow -NoNewline
-    Write-HiddenBadge -File $Mod
-    Write-Host
+    Write-Host $Mod.FileName -ForegroundColor Yellow
     Write-Host ("  │ " + ("─" * 66)) -ForegroundColor DarkYellow
+
+    if ($Mod.Hidden) {
+        Write-Host "  │  MOD IS HIDDEN" -ForegroundColor Yellow
+    }
 
     foreach ($flag in $Mod.Flags) {
         if ($flag -match "^(.+?) — (.+)$") {
@@ -1720,10 +1770,12 @@ function Write-ObfuscationCard {
     Write-Host "  │ " -ForegroundColor DarkYellow -NoNewline
     Write-Host " OBFUSCATED " -ForegroundColor Black -BackgroundColor DarkYellow -NoNewline
     Write-Host "  " -NoNewline
-    Write-Host $Mod.FileName -ForegroundColor Yellow -NoNewline
-    Write-HiddenBadge -File $Mod
-    Write-Host
+    Write-Host $Mod.FileName -ForegroundColor Yellow
     Write-Host ("  │ " + ("─" * 66)) -ForegroundColor DarkYellow
+
+    if ($Mod.Hidden) {
+        Write-Host "  │  MOD IS HIDDEN" -ForegroundColor Yellow
+    }
 
     foreach ($flag in $Mod.Flags) {
         if ($flag -match "^(.+?) — (.+)$") {
@@ -1757,9 +1809,7 @@ $bypassMods      = @()
 $obfuscatedMods  = @()
 
 try {
-    # -Force includes Hidden and System files; the explicit extension check also avoids
-    # PowerShell/provider-specific -Filter behaviour hiding system JARs.
-    $jarFiles = @(Get-ChildItem -Path $modsPath -Force -File -ErrorAction Stop | Where-Object { $_.Extension -ieq ".jar" })
+    $jarFiles = @(Get-ChildItem -LiteralPath $modsPath -Filter *.jar -File -Force -Recurse -ErrorAction Stop)
 } catch {
     Write-Host "❌ Error accessing directory: $_" -ForegroundColor Red
     Write-Host "Press any key to exit..." -ForegroundColor Gray
@@ -1782,7 +1832,7 @@ $spinnerFrames = @("⣾","⣽","⣻","⢿","⡿","⣟","⣯","⣷")
 $totalFiles    = $jarFiles.Count
 $idx           = 0
 
-Write-Host "🔍 Pass 1 — Hash verification (Modrinth → CurseForge → Megabase)..." -ForegroundColor DarkYellow
+Write-Host "🔍 Pass 1 — Hash verification (Modrinth + Megabase)..." -ForegroundColor DarkYellow
 
 foreach ($jar in $jarFiles) {
     $idx++
@@ -1790,23 +1840,71 @@ foreach ($jar in $jarFiles) {
     Write-Host "`r[$spinner] Verifying: $idx/$totalFiles - $($jar.Name)" -ForegroundColor Yellow -NoNewline
 
     $hash = Get-FileSHA1 -Path $jar.FullName
+    $isHidden = Test-IsHiddenPath -File $jar -RootPath $modsPath
+    $originUrl = Get-DownloadOriginUrl -Path $jar.FullName
 
     if ($hash) {
+        # Priority 1: exact Modrinth hash match. If a project exists on both platforms,
+        # Modrinth is always preferred for the displayed download count.
         $modrinthData = Query-Modrinth -Hash $hash
         if ($modrinthData.Slug) {
-            $verifiedMods += [PSCustomObject]@{ ModName = $modrinthData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $modrinthData.Downloads; VerificationSource = "Modrinth"; Attributes = $jar.Attributes }
-            continue
-        }
-
-        $curseForgeData = Query-CurseForge -Hash $hash
-        if ($curseForgeData.Name) {
-            $verifiedMods += [PSCustomObject]@{ ModName = $curseForgeData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $curseForgeData.Downloads; VerificationSource = "CurseForge"; Attributes = $jar.Attributes }
+            $verifiedMods += [PSCustomObject]@{
+                ModName = $modrinthData.Name
+                FileName = $jar.Name
+                FilePath = $jar.FullName
+                Hidden = $isHidden
+                Downloads = [long]$modrinthData.Downloads
+                DownloadSource = "Modrinth"
+            }
             continue
         }
 
         $megabaseData = Query-Megabase -Hash $hash
         if ($megabaseData.name) {
-            $verifiedMods += [PSCustomObject]@{ ModName = $megabaseData.Name; FileName = $jar.Name; FilePath = $jar.FullName; Downloads = $megabaseData.downloads; VerificationSource = "Megabase"; Attributes = $jar.Attributes }
+            $preferredDownloads = $null
+
+            # Megabase may know a Modrinth project even when this exact file hash is not there.
+            # Use an explicit Modrinth id/slug first, otherwise only accept a strong exact-name match.
+            $modrinthIdentifier = Get-ModrinthIdentifierFromData -Data $megabaseData
+            if ($modrinthIdentifier) {
+                $preferredDownloads = Query-ModrinthProject -IdOrSlug $modrinthIdentifier
+            }
+            if (-not $preferredDownloads) {
+                $preferredDownloads = Query-ModrinthByName -Name $megabaseData.Name
+            }
+
+            # If no Modrinth project exists, fall back to CurseForge.
+            if (-not $preferredDownloads) {
+                $curseForgePath = Get-CurseForgeProjectPathFromData -Data $megabaseData
+                if (-not $curseForgePath -and $originUrl) {
+                    $curseForgePath = Normalize-CurseForgeProjectPath -Value $originUrl
+                    if ($originUrl -notmatch '(?i)curseforge\.com') { $curseForgePath = "" }
+                }
+                if ($curseForgePath) {
+                    $preferredDownloads = Query-CurseForgeByProjectPath -ProjectPath $curseForgePath
+                }
+            }
+
+            # Last fallback: use a platform-specific download total if Megabase already returned one.
+            if (-not $preferredDownloads) {
+                $preferredDownloads = Get-MegabaseStoredDownloadInfo -Data $megabaseData
+            }
+
+            $downloadCount = -1
+            $downloadSource = ""
+            if ($preferredDownloads) {
+                $downloadCount = [long]$preferredDownloads.Downloads
+                $downloadSource = [string]$preferredDownloads.DownloadSource
+            }
+
+            $verifiedMods += [PSCustomObject]@{
+                ModName = $megabaseData.Name
+                FileName = $jar.Name
+                FilePath = $jar.FullName
+                Hidden = $isHidden
+                Downloads = $downloadCount
+                DownloadSource = $downloadSource
+            }
             continue
         }
     }
@@ -1816,14 +1914,14 @@ foreach ($jar in $jarFiles) {
         FileName = $jar.Name
         FilePath = $jar.FullName
         DownloadSource = $src
-        Attributes = $jar.Attributes
+        Hidden = $isHidden
     }
 }
 
 Write-Host "`r$(' ' * 100)`r" -NoNewline
 
 $modWord = if ($totalFiles -eq 1) { "mod" } else { "mods" }
-$pass2Label = "Scanning strings, patterns and nested JARs in all $totalFiles $modWord..."
+$pass2Label = "Scanning strings/patterns in all $totalFiles $modWord..."
 Write-Host "🔬 Pass 2 — $pass2Label" -ForegroundColor DarkYellow
 $idx = 0
 
@@ -1833,12 +1931,6 @@ foreach ($jar in $jarFiles) {
     Write-Host "`r[$spinner] Scanning: $idx/$totalFiles - $($jar.Name)" -ForegroundColor Yellow -NoNewline
 
     $result = Invoke-ModScan -FilePath $jar.FullName
-    $knownNestedCheatJars = @(Get-KnownNestedCheatJars -FilePath $jar.FullName)
-    if ($knownNestedCheatJars.Count -gt 0) {
-        foreach ($nestedName in $knownNestedCheatJars) {
-            [void]$result.Patterns.Add("Nested cheat JAR: $nestedName")
-        }
-    }
 
     if ($result.Patterns.Count -gt 0 -or $result.Strings.Count -gt 0 -or $result.Fullwidth.Count -gt 0) {
         $suspiciousMods += [PSCustomObject]@{
@@ -1846,7 +1938,7 @@ foreach ($jar in $jarFiles) {
             Patterns = $result.Patterns
             Strings  = $result.Strings
             Fullwidth = $result.Fullwidth
-            Hidden = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
+            Hidden = (Test-IsHiddenPath -File $jar -RootPath $modsPath)
         }
         $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
     }
@@ -1864,12 +1956,8 @@ foreach ($jar in $jarFiles) {
 
     $bypassFlagsRaw = Invoke-BypassScan -FilePath $jar.FullName
     $injectedPayloadFlagsRaw = Invoke-InjectedSodiumScan -FilePath $jar.FullName
-    $knownNestedCheatJars = @(Get-KnownNestedCheatJars -FilePath $jar.FullName)
 
     $bypassFlags = [System.Collections.Generic.List[string]]::new()
-    foreach ($nestedName in $knownNestedCheatJars) {
-        $bypassFlags.Add("Known cheat nested JAR — $nestedName / clothbasicmath payload")
-    }
     foreach ($flag in @($bypassFlagsRaw)) {
         if ($null -ne $flag -and $flag -ne "") { $bypassFlags.Add([string]$flag) }
     }
@@ -1881,7 +1969,7 @@ foreach ($jar in $jarFiles) {
         $bypassMods += [PSCustomObject]@{
             FileName = $jar.Name
             Flags    = $bypassFlags
-            Hidden   = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
+            Hidden   = (Test-IsHiddenPath -File $jar -RootPath $modsPath)
         }
         $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
         $unknownMods  = $unknownMods  | Where-Object { $_.FileName -ne $jar.Name }
@@ -1907,7 +1995,7 @@ foreach ($jar in $jarFiles) {
             $obfuscatedMods += [PSCustomObject]@{
                 FileName = $jar.Name
                 Flags    = $obfFlags
-                Hidden   = ($jar.Attributes -band [System.IO.FileAttributes]::Hidden)
+                Hidden   = (Test-IsHiddenPath -File $jar -RootPath $modsPath)
             }
             $verifiedMods = $verifiedMods | Where-Object { $_.FileName -ne $jar.Name }
         }
@@ -1940,11 +2028,20 @@ if ($verifiedMods.Count -gt 0) {
         Write-Host "  ✓ " -ForegroundColor Green -NoNewline
         Write-Host "$($mod.ModName)" -ForegroundColor White -NoNewline
         Write-Host " → " -ForegroundColor Gray -NoNewline
-        Write-Host "$($mod.FileName)" -ForegroundColor DarkGray -NoNewline
-        Write-HiddenBadge -File $mod
-        $downloadText = "$(Format-DownloadCount -Count $mod.Downloads) downloads"
-        $sourceText = if ($mod.VerificationSource) { $mod.VerificationSource } else { "verified" }
-        Write-Host " [$sourceText; $downloadText]" -ForegroundColor DarkGray
+        Write-Host "$($mod.FileName)" -ForegroundColor DarkGray
+
+        if ($mod.Downloads -ge 0 -and $mod.DownloadSource) {
+            $formattedDownloads = Format-DownloadCount -Count ([long]$mod.Downloads)
+            Write-Host "      Downloads: " -ForegroundColor Gray -NoNewline
+            Write-Host $formattedDownloads -ForegroundColor White -NoNewline
+            Write-Host " ($($mod.DownloadSource))" -ForegroundColor DarkGray
+        } else {
+            Write-Host "      Downloads: ?" -ForegroundColor DarkGray
+        }
+
+        if ($mod.Hidden) {
+            Write-Host "      MOD IS HIDDEN" -ForegroundColor Yellow
+        }
     }
     Write-Host ""
 }
@@ -1959,8 +2056,7 @@ if ($unknownMods.Count -gt 0) {
         $sourceText = if ($mod.DownloadSource) { "Source: $($mod.DownloadSource)" } else { "Source: ?" }
         $bottomLine = "  ╚═ " + $sourceText + " " + ("═" * (67 - $sourceText.Length)) + "╝"
         Write-Host $topLine    -ForegroundColor Yellow
-        Write-HiddenBadge -File $mod
-        Write-Host
+        if ($mod.Hidden) { Write-Host "    MOD IS HIDDEN" -ForegroundColor Yellow }
         Write-Host $bottomLine -ForegroundColor Yellow
         Write-Host ""
     }
