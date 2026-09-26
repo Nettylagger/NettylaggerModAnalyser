@@ -1415,7 +1415,7 @@ function Get-PrefetchExePathFromBytes {
 function Invoke-PrefetchScan {
     param(
         [string]$BasePath = "$env:SystemRoot\Prefetch",
-        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestigeclient","prestigeinjector","doomsday","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestigeclient","prestigeinjector","doomsday","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith","ZenithMacros","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     if (-not (Test-Path $BasePath)) { return $hits }
@@ -1442,7 +1442,7 @@ function Invoke-PrefetchScan {
 function Invoke-RecentLnkScan {
     param(
         [string]$BasePath = "$env:APPDATA\Microsoft\Windows\Recent",
-        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestigeclient","prestigeinjector","doomsday","novoware","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestigeclient","prestigeinjector","doomsday","novoware","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith","ZenithMacros","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     if (-not (Test-Path $BasePath)) { return $hits }
@@ -1475,7 +1475,7 @@ function Invoke-RecentLnkScan {
 
 function Invoke-TaskManagerProcessScan {
     param(
-        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith","ZenithMacros","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     try {
@@ -1929,6 +1929,48 @@ function Invoke-198MacrosArtifactScan {
 }
 
 
+function Invoke-ZenithMacrosArtifactScan {
+    $hits = [System.Collections.Generic.List[psobject]]::new()
+
+    function Add-ZenithHit {
+        param([string]$Artifact,[string]$Path,[Nullable[datetime]]$Time,[string]$Kind='Config',[string]$Application='',[System.Collections.Generic.List[psobject]]$Target)
+        $daysAgo=if($Time){[Math]::Max(0,[Math]::Floor(((Get-Date)-$Time).TotalDays))}else{$null}
+        $Target.Add([PSCustomObject]@{Artifact=$Artifact;Path=$Path;Application=$Application;Created=$Time;Modified=$Time;LastUsed=$Time;DaysAgo=$daysAgo;Kind=$Kind})
+    }
+
+    $browserRoots=@(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data'),
+        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'),
+        (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data'),
+        (Join-Path $env:APPDATA 'Opera Software')
+    )|Where-Object{Test-Path -LiteralPath $_ -PathType Container}
+
+    $storageEvidence=$null
+    foreach($root in $browserRoots){
+        Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object{$_.FullName -match '(?i)Local Storage\\leveldb'}|ForEach-Object{
+                try{$content=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName));if(($content -match '(?i)zenith-license\.fly\.dev|zenith.?macros') -and (-not $storageEvidence -or $_.LastWriteTime -gt $storageEvidence.LastWriteTime)){$storageEvidence=$_}}catch{}
+            }
+    }
+    if($storageEvidence){Add-ZenithHit 'Zenith Macros Local Storage Found' $storageEvidence.FullName $storageEvidence.LastWriteTime -Target $hits}
+
+    $muiKeys=@('HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache','HKCU:\Software\Microsoft\Windows\ShellNoRoam\MUICache')
+    $muiFound=$false
+    foreach($muiKey in $muiKeys){
+        if($muiFound -or -not(Test-Path -LiteralPath $muiKey)){continue}
+        try{$data=Get-ItemProperty -LiteralPath $muiKey -ErrorAction Stop;foreach($property in $data.PSObject.Properties){if(($property.Name+' '+[string]$property.Value)-match '(?i)zenith.?macros|zenithmacros?\.exe'){Add-ZenithHit 'Zenith Macros MUICache Entry Found' $property.Name $null 'Registry' ([string]$property.Value) -Target $hits;$muiFound=$true;break}}}catch{}
+    }
+
+    $appCompat='HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store'
+    if(Test-Path -LiteralPath $appCompat){
+        try{$data=Get-ItemProperty -LiteralPath $appCompat -ErrorAction Stop;$property=$data.PSObject.Properties|Where-Object{$_.Name -match '(?i)\\zenith[^\\]*\.exe$'}|Select-Object -First 1;if($property){Add-ZenithHit 'Zenith Macros AppCompat Entry Found' $property.Name $null 'Registry' 'Compatibility Assistant Store' -Target $hits}}catch{}
+    }
+
+    try{$events=@(Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Application-Experience/Program-Compatibility-Assistant';Id=17} -ErrorAction Stop|Where-Object{$_.Message -match '(?i)zenith[^\r\n]*\.exe'}|Sort-Object TimeCreated -Descending);if($events.Count -gt 0){$event=$events[0];$m=[regex]::Match($event.Message,'(?im)([A-Z]:\\[^\r\n]*?zenith[^\r\n]*?\.exe)');$path=if($m.Success){$m.Groups[1].Value.Trim()}else{'Zenith Macros executable'};Add-ZenithHit 'Zenith Macros PCA Execution Event Found' $path $event.TimeCreated -Target $hits}}catch{}
+
+    return $hits
+}
+
 function Write-HistoryScanReport {
     param($PrefetchHits, $RecentHits, $ArtifactHits)
 
@@ -2368,6 +2410,7 @@ $artifactHits = @(
     Invoke-HistoryArtifactPathScan
     Invoke-NuxorArtifactScan
     Invoke-198MacrosArtifactScan
+    Invoke-ZenithMacrosArtifactScan
 )
 $processHits  = Invoke-TaskManagerProcessScan
 $dnsHits      = Invoke-DnsIndicatorScan
