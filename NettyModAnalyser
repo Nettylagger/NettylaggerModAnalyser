@@ -1415,7 +1415,7 @@ function Get-PrefetchExePathFromBytes {
 function Invoke-PrefetchScan {
     param(
         [string]$BasePath = "$env:SystemRoot\Prefetch",
-        [string[]]$Keywords = @("198m","198macro","prestige","prestigeclient","prestigeinjector","doomsday","Boze","Dqrkis","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","prestige","prestigeclient","prestigeinjector","doomsday","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     if (-not (Test-Path $BasePath)) { return $hits }
@@ -1442,7 +1442,7 @@ function Invoke-PrefetchScan {
 function Invoke-RecentLnkScan {
     param(
         [string]$BasePath = "$env:APPDATA\Microsoft\Windows\Recent",
-        [string[]]$Keywords = @("198m","198macro","prestige","prestigeclient","prestigeinjector","doomsday","novoware","Boze","Dqrkis","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","prestige","prestigeclient","prestigeinjector","doomsday","novoware","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     if (-not (Test-Path $BasePath)) { return $hits }
@@ -1473,9 +1473,61 @@ function Invoke-RecentLnkScan {
     return $hits
 }
 
+function Invoke-KnownExecutableScan {
+    param(
+        [string[]]$KnownHashes = @('9F41D91C4E377D96571AC2889F5B819E109ED0ED870F3A66E856BC4602006876'),
+        [string[]]$SearchRoots = @(
+            (Join-Path $env:USERPROFILE 'Downloads'),
+            (Join-Path $env:USERPROFILE 'Desktop'),
+            $env:TEMP
+        )
+    )
+
+    $hits = [System.Collections.Generic.List[psobject]]::new()
+    $seen = @{}
+    foreach ($root in $SearchRoots) {
+        if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path -LiteralPath $root)) { continue }
+        Get-ChildItem -LiteralPath $root -Filter '*.exe' -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+                if ($KnownHashes -contains $hash -and -not $seen.ContainsKey($_.FullName)) {
+                    $seen[$_.FullName] = $true
+                    $hits.Add([PSCustomObject]@{
+                        FileName = $_.Name
+                        FilePath = $_.FullName
+                        SHA256   = $hash
+                        Match    = 'Exact SHA-256'
+                    })
+                }
+            } catch { }
+        }
+    }
+    return $hits
+}
+
+function Write-KnownExecutableScanReport {
+    param($ExecutableHits)
+
+    $ExecutableHits = @($ExecutableHits | Where-Object { $_ -ne $null })
+    Write-SectionHeader -Title 'KNOWN EXECUTABLE HASH SCAN' -Count $ExecutableHits.Count -DotColor Red -CountColor $(if ($ExecutableHits.Count -gt 0) { 'Red' } else { 'DarkGray' })
+    if ($ExecutableHits.Count -eq 0) {
+        Write-Host '  No known executable hashes found.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+    foreach ($hit in $ExecutableHits) {
+        Write-Host "  • FLAGGED: $($hit.FileName)" -ForegroundColor Red
+        Write-Host "       Path:   $($hit.FilePath)" -ForegroundColor White
+        Write-Host "       SHA256: $($hit.SHA256)" -ForegroundColor DarkGray
+        Write-Host "       Match:  $($hit.Match)" -ForegroundColor DarkGray
+    }
+    Write-Host ''
+}
+
 function Invoke-TaskManagerProcessScan {
     param(
-        [string[]]$Keywords = @("198m","198macro","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo"),
+        [string[]]$KnownHashes = @('9F41D91C4E377D96571AC2889F5B819E109ED0ED870F3A66E856BC4602006876')
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     try {
@@ -1486,16 +1538,35 @@ function Invoke-TaskManagerProcessScan {
     foreach ($proc in $processes) {
         $procName = if ($proc.Name) { $proc.Name } else { '' }
         $cmdLine  = if ($proc.CommandLine) { $proc.CommandLine } else { '' }
+        $path     = if ($proc.ExecutablePath) { [string]$proc.ExecutablePath } else { '' }
+        $matchReason = $null
+        $matchedHash = $null
+
         foreach ($keyword in $Keywords) {
             if ((Test-SuspiciousKeywordMatch -Text $procName -Keyword $keyword) -or
                 ($cmdLine -and (Test-SuspiciousKeywordMatch -Text $cmdLine -Keyword $keyword))) {
-                $hits.Add([PSCustomObject]@{
-                    ProcessName = $proc.Name
-                    ProcessId   = $proc.ProcessId
-                    CommandLine = $proc.CommandLine
-                })
+                $matchReason = "Keyword: $keyword"
                 break
             }
+        }
+
+        # Hash matching still works if renamae.exe was renamed.
+        if ($path -and (Test-Path -LiteralPath $path)) {
+            try {
+                $matchedHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash
+                if ($KnownHashes -contains $matchedHash) { $matchReason = 'Exact SHA-256' }
+            } catch { }
+        }
+
+        if ($matchReason) {
+            $hits.Add([PSCustomObject]@{
+                ProcessName   = $proc.Name
+                ProcessId     = $proc.ProcessId
+                ExecutablePath = $path
+                CommandLine   = $proc.CommandLine
+                SHA256        = $matchedHash
+                Match         = $matchReason
+            })
         }
     }
     return $hits
@@ -1509,6 +1580,9 @@ function Write-TaskManagerScanReport {
     if ($ProcessHits.Count -gt 0) {
         foreach ($hit in $ProcessHits) {
             Write-Host "  • $($hit.ProcessName) PID $($hit.ProcessId)" -ForegroundColor White
+            if ($hit.Match) { Write-Host "       Match:     $($hit.Match)" -ForegroundColor Red }
+            if ($hit.ExecutablePath) { Write-Host "       Path:      $($hit.ExecutablePath)" -ForegroundColor DarkGray }
+            if ($hit.SHA256) { Write-Host "       SHA256:    $($hit.SHA256)" -ForegroundColor DarkGray }
             if ($null -ne $hit.CommandLine -and $hit.CommandLine -ne '') {
                 Write-Host "       Command:   " -ForegroundColor Gray -NoNewline
                 Write-Host "$($hit.CommandLine)" -ForegroundColor DarkGray
@@ -1519,6 +1593,73 @@ function Write-TaskManagerScanReport {
         Write-Host "  No suspicious TaskManager processes found." -ForegroundColor DarkGray
         Write-Host ""
     }
+}
+
+function Invoke-DnsIndicatorScan {
+    param([string[]]$Domains = @(
+        'bobertmacros.store',
+        '198macros.com',
+        'vape.gg',
+        'pikainjection.xyz',
+        'prestigeclient.vip',
+        'dotgod.cc',
+        'elementars.com',
+        'nutgod.cc',
+        'trollgod.cc',
+        'turcohack.cc',
+        'uop.cc',
+        'karma.rip',
+        'velaris-auth.tvanvinkenroye.workers.dev',
+        'zenith-license.fly.dev',
+        'asteria.rip',
+        'misericordia.fun',
+        'allah.owns.me',
+        'cats.gg',
+        'aids.dev',
+        'norules.com'
+    ))
+
+    $hits = [System.Collections.Generic.List[psobject]]::new()
+    try {
+        $records = @(Get-DnsClientCache -ErrorAction Stop)
+    } catch {
+        return $hits
+    }
+
+    foreach ($record in $records) {
+        $entry = if ($record.Entry) { [string]$record.Entry } elseif ($record.RecordName) { [string]$record.RecordName } else { '' }
+        foreach ($domain in $Domains) {
+            if ($entry -ieq $domain -or $entry.EndsWith('.' + $domain, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $hits.Add([PSCustomObject]@{
+                    Domain     = $entry
+                    RecordType = $record.RecordType
+                    Data       = $record.Data
+                    TimeToLive = $record.TimeToLive
+                    Status     = $record.Status
+                })
+                break
+            }
+        }
+    }
+    return $hits
+}
+
+function Write-DnsIndicatorReport {
+    param($DnsHits)
+
+    $DnsHits = @($DnsHits | Where-Object { $_ -ne $null })
+    Write-SectionHeader -Title 'DNS CACHE INDICATOR SCAN' -Count $DnsHits.Count -DotColor DarkCyan -CountColor $(if ($DnsHits.Count -gt 0) { 'Red' } else { 'DarkGray' })
+    if ($DnsHits.Count -eq 0) {
+        Write-Host '  No configured suspicious DNS cache entries found.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    foreach ($hit in $DnsHits) {
+        Write-Host "  • $($hit.Domain)" -ForegroundColor Red
+        Write-Host "       Type: $($hit.RecordType)  Data: $($hit.Data)  TTL: $($hit.TimeToLive)" -ForegroundColor DarkGray
+    }
+    Write-Host ''
 }
 
 function Write-HistoryScanReport {
@@ -1936,8 +2077,12 @@ Write-Host "`r$(' ' * 100)`r" -NoNewline
 
 $prefetchHits = Invoke-PrefetchScan
 $recentHits   = Invoke-RecentLnkScan
-$processHits  = Invoke-TaskManagerProcessScan
+$processHits    = Invoke-TaskManagerProcessScan
+$executableHits = Invoke-KnownExecutableScan
+$dnsHits        = Invoke-DnsIndicatorScan
+Write-KnownExecutableScanReport -ExecutableHits $executableHits
 Write-TaskManagerScanReport -ProcessHits $processHits
+Write-DnsIndicatorReport -DnsHits $dnsHits
 Write-HistoryScanReport -PrefetchHits $prefetchHits -RecentHits $recentHits
 Write-JvmArgumentInspectorReport -ProcessResults $jvmArgumentResults
 
