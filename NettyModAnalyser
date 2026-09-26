@@ -1473,61 +1473,9 @@ function Invoke-RecentLnkScan {
     return $hits
 }
 
-function Invoke-KnownExecutableScan {
-    param(
-        [string[]]$KnownHashes = @('9F41D91C4E377D96571AC2889F5B819E109ED0ED870F3A66E856BC4602006876'),
-        [string[]]$SearchRoots = @(
-            (Join-Path $env:USERPROFILE 'Downloads'),
-            (Join-Path $env:USERPROFILE 'Desktop'),
-            $env:TEMP
-        )
-    )
-
-    $hits = [System.Collections.Generic.List[psobject]]::new()
-    $seen = @{}
-    foreach ($root in $SearchRoots) {
-        if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path -LiteralPath $root)) { continue }
-        Get-ChildItem -LiteralPath $root -Filter '*.exe' -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            try {
-                $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
-                if ($KnownHashes -contains $hash -and -not $seen.ContainsKey($_.FullName)) {
-                    $seen[$_.FullName] = $true
-                    $hits.Add([PSCustomObject]@{
-                        FileName = $_.Name
-                        FilePath = $_.FullName
-                        SHA256   = $hash
-                        Match    = 'Exact SHA-256'
-                    })
-                }
-            } catch { }
-        }
-    }
-    return $hits
-}
-
-function Write-KnownExecutableScanReport {
-    param($ExecutableHits)
-
-    $ExecutableHits = @($ExecutableHits | Where-Object { $_ -ne $null })
-    Write-SectionHeader -Title 'KNOWN EXECUTABLE HASH SCAN' -Count $ExecutableHits.Count -DotColor Red -CountColor $(if ($ExecutableHits.Count -gt 0) { 'Red' } else { 'DarkGray' })
-    if ($ExecutableHits.Count -eq 0) {
-        Write-Host '  No known executable hashes found.' -ForegroundColor DarkGray
-        Write-Host ''
-        return
-    }
-    foreach ($hit in $ExecutableHits) {
-        Write-Host "  • FLAGGED: $($hit.FileName)" -ForegroundColor Red
-        Write-Host "       Path:   $($hit.FilePath)" -ForegroundColor White
-        Write-Host "       SHA256: $($hit.SHA256)" -ForegroundColor DarkGray
-        Write-Host "       Match:  $($hit.Match)" -ForegroundColor DarkGray
-    }
-    Write-Host ''
-}
-
 function Invoke-TaskManagerProcessScan {
     param(
-        [string[]]$Keywords = @("198m","198macro","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo"),
-        [string[]]$KnownHashes = @('9F41D91C4E377D96571AC2889F5B819E109ED0ED870F3A66E856BC4602006876')
+        [string[]]$Keywords = @("198m","198macro","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     try {
@@ -1538,35 +1486,16 @@ function Invoke-TaskManagerProcessScan {
     foreach ($proc in $processes) {
         $procName = if ($proc.Name) { $proc.Name } else { '' }
         $cmdLine  = if ($proc.CommandLine) { $proc.CommandLine } else { '' }
-        $path     = if ($proc.ExecutablePath) { [string]$proc.ExecutablePath } else { '' }
-        $matchReason = $null
-        $matchedHash = $null
-
         foreach ($keyword in $Keywords) {
             if ((Test-SuspiciousKeywordMatch -Text $procName -Keyword $keyword) -or
                 ($cmdLine -and (Test-SuspiciousKeywordMatch -Text $cmdLine -Keyword $keyword))) {
-                $matchReason = "Keyword: $keyword"
+                $hits.Add([PSCustomObject]@{
+                    ProcessName = $proc.Name
+                    ProcessId   = $proc.ProcessId
+                    CommandLine = $proc.CommandLine
+                })
                 break
             }
-        }
-
-        # Hash matching still works if renamae.exe was renamed.
-        if ($path -and (Test-Path -LiteralPath $path)) {
-            try {
-                $matchedHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash
-                if ($KnownHashes -contains $matchedHash) { $matchReason = 'Exact SHA-256' }
-            } catch { }
-        }
-
-        if ($matchReason) {
-            $hits.Add([PSCustomObject]@{
-                ProcessName   = $proc.Name
-                ProcessId     = $proc.ProcessId
-                ExecutablePath = $path
-                CommandLine   = $proc.CommandLine
-                SHA256        = $matchedHash
-                Match         = $matchReason
-            })
         }
     }
     return $hits
@@ -1580,9 +1509,6 @@ function Write-TaskManagerScanReport {
     if ($ProcessHits.Count -gt 0) {
         foreach ($hit in $ProcessHits) {
             Write-Host "  • $($hit.ProcessName) PID $($hit.ProcessId)" -ForegroundColor White
-            if ($hit.Match) { Write-Host "       Match:     $($hit.Match)" -ForegroundColor Red }
-            if ($hit.ExecutablePath) { Write-Host "       Path:      $($hit.ExecutablePath)" -ForegroundColor DarkGray }
-            if ($hit.SHA256) { Write-Host "       SHA256:    $($hit.SHA256)" -ForegroundColor DarkGray }
             if ($null -ne $hit.CommandLine -and $hit.CommandLine -ne '') {
                 Write-Host "       Command:   " -ForegroundColor Gray -NoNewline
                 Write-Host "$($hit.CommandLine)" -ForegroundColor DarkGray
@@ -1662,13 +1588,128 @@ function Write-DnsIndicatorReport {
     Write-Host ''
 }
 
+function Invoke-HistoryArtifactPathScan {
+    param(
+        [string[]]$Paths = @(
+            (Join-Path $env:LOCALAPPDATA 'Temp\cracke2_bypass\.minecraft\.mcClient-renderer-cache')
+        )
+    )
+
+    $hits = [System.Collections.Generic.List[psobject]]::new()
+    foreach ($path in $Paths) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if (-not (Test-Path -LiteralPath $path -PathType Container)) { continue }
+
+        $folder = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        $renderJson = Join-Path $path 'render.json'
+        $evidence = if (Test-Path -LiteralPath $renderJson -PathType Leaf) {
+            Get-Item -LiteralPath $renderJson -Force -ErrorAction SilentlyContinue
+        } else {
+            $folder
+        }
+        if (-not $evidence) { continue }
+
+        $age = (Get-Date) - $evidence.LastWriteTime
+        $daysAgo = [Math]::Max(0, [Math]::Floor($age.TotalDays))
+        $hits.Add([PSCustomObject]@{
+            Artifact = 'Dqrkis External Config Found'
+            Path     = $evidence.FullName
+            Created  = $evidence.CreationTime
+            Modified = $evidence.LastWriteTime
+            LastUsed = $evidence.LastWriteTime
+            DaysAgo  = [int]$daysAgo
+            Kind     = 'Config'
+        })
+    }
+    # Persistent WebView evidence: BrowserMetrics contains the internal executable name.
+    $webViewRoot = Join-Path $env:LOCALAPPDATA 'com.windows.coreruntime\EBWebView'
+    $browserMetricsRoot = Join-Path $webViewRoot 'BrowserMetrics'
+    if (Test-Path -LiteralPath $browserMetricsRoot -PathType Container) {
+        $metricMatches = @(Get-ChildItem -LiteralPath $browserMetricsRoot -Filter 'BrowserMetrics-*' -File -Force -ErrorAction SilentlyContinue | Where-Object {
+            try {
+                $content = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName))
+                $content.IndexOf('dqrkis.exe', [StringComparison]::OrdinalIgnoreCase) -ge 0
+            } catch { $false }
+        } | Sort-Object LastWriteTime -Descending)
+        if ($metricMatches.Count -gt 0) {
+            $evidence = $metricMatches[0]
+            $daysAgo = [Math]::Max(0, [Math]::Floor(((Get-Date) - $evidence.LastWriteTime).TotalDays))
+            $hits.Add([PSCustomObject]@{
+                Artifact = 'Dqrkis BrowserMetrics Found'
+                Path = $evidence.FullName
+                Created = $evidence.CreationTime
+                Modified = $evidence.LastWriteTime
+                LastUsed = $evidence.LastWriteTime
+                DaysAgo = [int]$daysAgo
+                Kind = 'Config'
+            })
+        }
+    }
+
+    # Persistent WebView evidence: Local Storage contains the Dqrkis-specific key.
+    $levelDbRoot = Join-Path $webViewRoot 'Default\Local Storage\leveldb'
+    if (Test-Path -LiteralPath $levelDbRoot -PathType Container) {
+        $storageMatches = @(Get-ChildItem -LiteralPath $levelDbRoot -File -Force -ErrorAction SilentlyContinue | Where-Object {
+            try {
+                $content = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName))
+                $content.IndexOf('dqrkis_saved_key', [StringComparison]::OrdinalIgnoreCase) -ge 0
+            } catch { $false }
+        } | Sort-Object LastWriteTime -Descending)
+        if ($storageMatches.Count -gt 0) {
+            $evidence = $storageMatches[0]
+            $daysAgo = [Math]::Max(0, [Math]::Floor(((Get-Date) - $evidence.LastWriteTime).TotalDays))
+            $hits.Add([PSCustomObject]@{
+                Artifact = 'Dqrkis Local Storage Found'
+                Path = $evidence.FullName
+                Created = $evidence.CreationTime
+                Modified = $evidence.LastWriteTime
+                LastUsed = $evidence.LastWriteTime
+                DaysAgo = [int]$daysAgo
+                Kind = 'Config'
+            })
+        }
+    }
+
+    # MUICache preserves the internal Dqrkis path and display name after renaming/closing.
+    $muiKeys = @(
+        'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache',
+        'HKCU:\Software\Microsoft\Windows\ShellNoRoam\MUICache'
+    )
+    $muiFound = $false
+    foreach ($muiKey in $muiKeys) {
+        if ($muiFound -or -not (Test-Path -LiteralPath $muiKey)) { continue }
+        try {
+            $muiData = Get-ItemProperty -LiteralPath $muiKey -ErrorAction Stop
+            foreach ($property in $muiData.PSObject.Properties) {
+                if ($property.Name -match '(?i)dqrkis\.exe\.FriendlyAppName$') {
+                    $hits.Add([PSCustomObject]@{
+                        Artifact = 'Dqrkis MUICache Entry Found'
+                        Path = $property.Name
+                        Application = [string]$property.Value
+                        Created = $null
+                        Modified = $null
+                        LastUsed = $null
+                        DaysAgo = $null
+                        Kind = 'Registry'
+                    })
+                    $muiFound = $true
+                    break
+                }
+            }
+        } catch { }
+    }
+
+    return $hits
+}
+
 function Write-HistoryScanReport {
-    param($PrefetchHits, $RecentHits)
+    param($PrefetchHits, $RecentHits, $ArtifactHits)
 
     $PrefetchHits = @($PrefetchHits | Where-Object { $_ -ne $null })
     $RecentHits   = @($RecentHits   | Where-Object { $_ -ne $null })
+    $ArtifactHits = @($ArtifactHits | Where-Object { $_ -ne $null })
 
-    Write-SectionHeader -Title "SYSTEM HISTORY SCAN" -Count (($PrefetchHits.Count + $RecentHits.Count)) -DotColor DarkCyan -CountColor $(if (($PrefetchHits.Count + $RecentHits.Count) -gt 0) { "Magenta" } else { "DarkGray" })
+    Write-SectionHeader -Title "SYSTEM HISTORY SCAN" -Count (($PrefetchHits.Count + $RecentHits.Count + $ArtifactHits.Count)) -DotColor DarkCyan -CountColor $(if (($PrefetchHits.Count + $RecentHits.Count + $ArtifactHits.Count) -gt 0) { "Magenta" } else { "DarkGray" })
     if ($PrefetchHits.Count -gt 0) {
         Write-Host "  Prefetch matches:" -ForegroundColor Magenta
         foreach ($hit in $PrefetchHits) {
@@ -1699,8 +1740,27 @@ function Write-HistoryScanReport {
         }
         Write-Host ""
     }
-    if ($PrefetchHits.Count -eq 0 -and $RecentHits.Count -eq 0) {
-        Write-Host "  No suspicious prefetch or recent link entries found." -ForegroundColor DarkGray
+    if ($ArtifactHits.Count -gt 0) {
+        Write-Host "  Artifact folder matches:" -ForegroundColor Red
+        foreach ($hit in $ArtifactHits) {
+            if ($hit.Kind -eq 'Registry') {
+                Write-Host "    • FLAGGED: Dqrkis MUICache Entry Found" -ForegroundColor Red
+                Write-Host "       Application: $($hit.Application)" -ForegroundColor White
+            } elseif ($hit.Kind -eq 'Config') {
+                $dayLabel = if ($hit.DaysAgo -eq 1) { 'day' } else { 'days' }
+                Write-Host "    • FLAGGED: $($hit.Artifact) — last used $($hit.DaysAgo) $dayLabel ago" -ForegroundColor Red
+            } else {
+                Write-Host "    • FLAGGED: $($hit.Artifact)" -ForegroundColor Red
+            }
+            Write-Host "       Path:       $($hit.Path)" -ForegroundColor DarkGray
+            if ($hit.Created)  { Write-Host "       Created:    $($hit.Created)" -ForegroundColor DarkGray }
+            if ($hit.LastUsed) { Write-Host "       Last used:  $($hit.LastUsed)" -ForegroundColor DarkGray }
+            elseif ($hit.Modified) { Write-Host "       Modified:   $($hit.Modified)" -ForegroundColor DarkGray }
+        }
+        Write-Host ""
+    }
+    if ($PrefetchHits.Count -eq 0 -and $RecentHits.Count -eq 0 -and $ArtifactHits.Count -eq 0) {
+        Write-Host "  No suspicious prefetch, recent link, or artifact folder entries found." -ForegroundColor DarkGray
         Write-Host ""
     }
 }
@@ -2077,13 +2137,12 @@ Write-Host "`r$(' ' * 100)`r" -NoNewline
 
 $prefetchHits = Invoke-PrefetchScan
 $recentHits   = Invoke-RecentLnkScan
-$processHits    = Invoke-TaskManagerProcessScan
-$executableHits = Invoke-KnownExecutableScan
-$dnsHits        = Invoke-DnsIndicatorScan
-Write-KnownExecutableScanReport -ExecutableHits $executableHits
+$artifactHits = Invoke-HistoryArtifactPathScan
+$processHits  = Invoke-TaskManagerProcessScan
+$dnsHits      = Invoke-DnsIndicatorScan
 Write-TaskManagerScanReport -ProcessHits $processHits
 Write-DnsIndicatorReport -DnsHits $dnsHits
-Write-HistoryScanReport -PrefetchHits $prefetchHits -RecentHits $recentHits
+Write-HistoryScanReport -PrefetchHits $prefetchHits -RecentHits $recentHits -ArtifactHits $artifactHits
 Write-JvmArgumentInspectorReport -ProcessResults $jvmArgumentResults
 
 if ($verifiedMods.Count -gt 0) {
