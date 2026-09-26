@@ -1699,6 +1699,33 @@ function Invoke-HistoryArtifactPathScan {
         } catch { }
     }
 
+    # Windows PCA Event 17 records actual execution and survives process exit.
+    try {
+        $pcaEvents = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'Microsoft-Windows-Application-Experience/Program-Compatibility-Assistant'
+            Id = 17
+        } -ErrorAction Stop | Where-Object {
+            $_.Message -match '(?i)\\cracke2_bypass\\dqrkis\.exe|\\dqrkis\.exe'
+        } | Sort-Object TimeCreated -Descending)
+
+        if ($pcaEvents.Count -gt 0) {
+            $event = $pcaEvents[0]
+            $pathMatch = [regex]::Match($event.Message, '(?im)([A-Z]:\\[^\r\n]*?dqrkis\.exe)')
+            $executionPath = if ($pathMatch.Success) { $pathMatch.Groups[1].Value.Trim() } else { 'dqrkis.exe' }
+            $daysAgo = [Math]::Max(0, [Math]::Floor(((Get-Date) - $event.TimeCreated).TotalDays))
+            $hits.Add([PSCustomObject]@{
+                Artifact = 'Dqrkis PCA Execution Event Found'
+                Path = $executionPath
+                Application = 'Event ID 17'
+                Created = $event.TimeCreated
+                Modified = $event.TimeCreated
+                LastUsed = $event.TimeCreated
+                DaysAgo = [int]$daysAgo
+                Kind = 'Config'
+            })
+        }
+    } catch { }
+
     return $hits
 }
 
