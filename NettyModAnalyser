@@ -1415,7 +1415,7 @@ function Get-PrefetchExePathFromBytes {
 function Invoke-PrefetchScan {
     param(
         [string]$BasePath = "$env:SystemRoot\Prefetch",
-        [string[]]$Keywords = @("198m","198macro","prestige","prestigeclient","prestigeinjector","doomsday","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestigeclient","prestigeinjector","doomsday","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     if (-not (Test-Path $BasePath)) { return $hits }
@@ -1442,7 +1442,7 @@ function Invoke-PrefetchScan {
 function Invoke-RecentLnkScan {
     param(
         [string]$BasePath = "$env:APPDATA\Microsoft\Windows\Recent",
-        [string[]]$Keywords = @("198m","198macro","prestige","prestigeclient","prestigeinjector","doomsday","novoware","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestigeclient","prestigeinjector","doomsday","novoware","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     if (-not (Test-Path $BasePath)) { return $hits }
@@ -1475,7 +1475,7 @@ function Invoke-RecentLnkScan {
 
 function Invoke-TaskManagerProcessScan {
     param(
-        [string[]]$Keywords = @("198m","198macro","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
+        [string[]]$Keywords = @("198m","198macro","198macros","prestige","prestige-injector","prestigeinjector","Boze","Dqrkis","BobertMacros","Nuxor","Nuxor-cracked","Orchard","Zenith Macros","Velaris","Karma","Pika","anamvmnt","Water","Noxx","Calcium","Zelith","Xenon V2","Echo")
     )
     $hits = [System.Collections.Generic.List[psobject]]::new()
     try {
@@ -1524,6 +1524,7 @@ function Write-TaskManagerScanReport {
 function Invoke-DnsIndicatorScan {
     param([string[]]$Domains = @(
         'bobertmacros.store',
+        'nuxor.org',
         '198macros.com',
         'vape.gg',
         'pikainjection.xyz',
@@ -1729,6 +1730,205 @@ function Invoke-HistoryArtifactPathScan {
     return $hits
 }
 
+function Invoke-NuxorArtifactScan {
+    $hits = [System.Collections.Generic.List[psobject]]::new()
+
+    function Add-NuxorHit {
+        param([string]$Artifact, [System.IO.FileSystemInfo]$Evidence, [string]$Kind = 'Config', [string]$Application = '')
+        if (-not $Evidence) { return }
+        $daysAgo = [Math]::Max(0, [Math]::Floor(((Get-Date) - $Evidence.LastWriteTime).TotalDays))
+        $hits.Add([PSCustomObject]@{
+            Artifact = $Artifact
+            Path = $Evidence.FullName
+            Application = $Application
+            Created = $Evidence.CreationTime
+            Modified = $Evidence.LastWriteTime
+            LastUsed = $Evidence.LastWriteTime
+            DaysAgo = [int]$daysAgo
+            Kind = $Kind
+        })
+    }
+
+    # Known Nuxor runtime files embedded in the executable.
+    $runtimeNames = @('nuxor_macro_log.txt','nuxor_crosshair_state.txt','nuxor_crash.log')
+    $runtimeFound = $null
+    foreach ($name in $runtimeNames) {
+        $candidate = Get-ChildItem -LiteralPath $env:TEMP -Filter $name -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($candidate -and (-not $runtimeFound -or $candidate.LastWriteTime -gt $runtimeFound.LastWriteTime)) { $runtimeFound = $candidate }
+    }
+    if ($runtimeFound) { Add-NuxorHit 'Nuxor Runtime Artifact Found' $runtimeFound }
+
+    $browserRoots = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data'),
+        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'),
+        (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data'),
+        (Join-Path $env:APPDATA 'Opera Software')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Container }
+
+    # Browser Local Storage keeps highly specific Nuxor keys after the process exits.
+    $storageEvidence = $null
+    foreach ($root in $browserRoots) {
+        $files = Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '(?i)Local Storage\\leveldb' }
+        foreach ($file in $files) {
+            try {
+                $content = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($file.FullName))
+                if ($content.IndexOf('nuxor_config_v1', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                    $content.IndexOf('nuxor_license_key', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                    if (-not $storageEvidence -or $file.LastWriteTime -gt $storageEvidence.LastWriteTime) { $storageEvidence = $file }
+                }
+            } catch { }
+        }
+    }
+    if ($storageEvidence) { Add-NuxorHit 'Nuxor Local Storage Found' $storageEvidence }
+
+    # BrowserMetrics can retain the Nuxor process/application name.
+    $metricsEvidence = $null
+    foreach ($root in $browserRoots) {
+        Get-ChildItem -LiteralPath $root -Filter 'BrowserMetrics-*' -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                $content = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName))
+                if ($content.IndexOf('nuxor', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                    (-not $metricsEvidence -or $_.LastWriteTime -gt $metricsEvidence.LastWriteTime)) { $metricsEvidence = $_ }
+            } catch { }
+        }
+    }
+    if ($metricsEvidence) { Add-NuxorHit 'Nuxor BrowserMetrics Found' $metricsEvidence }
+
+    # MUICache keeps display names and paths even after the visible EXE is renamed.
+    $muiKeys = @(
+        'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache',
+        'HKCU:\Software\Microsoft\Windows\ShellNoRoam\MUICache'
+    )
+    $muiFound = $false
+    foreach ($muiKey in $muiKeys) {
+        if ($muiFound -or -not (Test-Path -LiteralPath $muiKey)) { continue }
+        try {
+            $muiData = Get-ItemProperty -LiteralPath $muiKey -ErrorAction Stop
+            foreach ($property in $muiData.PSObject.Properties) {
+                if (($property.Name + ' ' + [string]$property.Value) -match '(?i)nuxor') {
+                    $hits.Add([PSCustomObject]@{
+                        Artifact = 'Nuxor MUICache Entry Found'; Path = $property.Name
+                        Application = [string]$property.Value; Created = $null; Modified = $null
+                        LastUsed = $null; DaysAgo = $null; Kind = 'Registry'
+                    })
+                    $muiFound = $true
+                    break
+                }
+            }
+        } catch { }
+    }
+
+    # PCA Event 17 is a direct historical execution record.
+    try {
+        $events = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'Microsoft-Windows-Application-Experience/Program-Compatibility-Assistant'; Id = 17
+        } -ErrorAction Stop | Where-Object { $_.Message -match '(?i)nuxor[^\r\n]*\.exe' } | Sort-Object TimeCreated -Descending)
+        if ($events.Count -gt 0) {
+            $event = $events[0]
+            $pathMatch = [regex]::Match($event.Message, '(?im)([A-Z]:\\[^\r\n]*?nuxor[^\r\n]*?\.exe)')
+            $executionPath = if ($pathMatch.Success) { $pathMatch.Groups[1].Value.Trim() } else { 'Nuxor executable' }
+            $daysAgo = [Math]::Max(0, [Math]::Floor(((Get-Date) - $event.TimeCreated).TotalDays))
+            $hits.Add([PSCustomObject]@{
+                Artifact = 'Nuxor PCA Execution Event Found'; Path = $executionPath
+                Application = 'Event ID 17'; Created = $event.TimeCreated; Modified = $event.TimeCreated
+                LastUsed = $event.TimeCreated; DaysAgo = [int]$daysAgo; Kind = 'Config'
+            })
+        }
+    } catch { }
+
+    return $hits
+}
+
+function Invoke-198MacrosArtifactScan {
+    $hits = [System.Collections.Generic.List[psobject]]::new()
+
+    function Add-198Hit {
+        param([string]$Artifact, [string]$Path, [Nullable[datetime]]$Time, [string]$Kind = 'Config', [string]$Application = '', [System.Collections.Generic.List[psobject]]$Target)
+        $daysAgo = if ($Time) { [Math]::Max(0, [Math]::Floor(((Get-Date) - $Time).TotalDays)) } else { $null }
+        $Target.Add([PSCustomObject]@{
+            Artifact=$Artifact; Path=$Path; Application=$Application
+            Created=$Time; Modified=$Time; LastUsed=$Time; DaysAgo=$daysAgo; Kind=$Kind
+        })
+    }
+
+    # Browser Local Storage can retain application/domain identifiers after exit.
+    $browserRoots = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data'),
+        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'),
+        (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data'),
+        (Join-Path $env:APPDATA 'Opera Software')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Container }
+    $storageEvidence = $null
+    foreach ($root in $browserRoots) {
+        Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '(?i)Local Storage\\leveldb' } | ForEach-Object {
+                try {
+                    $content=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName))
+                    if (($content -match '(?i)198macros|198macros\.com') -and
+                        (-not $storageEvidence -or $_.LastWriteTime -gt $storageEvidence.LastWriteTime)) { $storageEvidence=$_ }
+                } catch { }
+            }
+    }
+    if ($storageEvidence) { Add-198Hit '198Macros Local Storage Found' $storageEvidence.FullName $storageEvidence.LastWriteTime -Target $hits }
+
+    # MUICache retains the original filename/display name.
+    $muiKeys=@(
+        'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache',
+        'HKCU:\Software\Microsoft\Windows\ShellNoRoam\MUICache'
+    )
+    $muiFound=$false
+    foreach($muiKey in $muiKeys){
+        if($muiFound -or -not(Test-Path -LiteralPath $muiKey)){continue}
+        try{
+            $data=Get-ItemProperty -LiteralPath $muiKey -ErrorAction Stop
+            foreach($property in $data.PSObject.Properties){
+                if(($property.Name+' '+[string]$property.Value) -match '(?i)198macros?'){
+                    Add-198Hit '198Macros MUICache Entry Found' $property.Name $null 'Registry' ([string]$property.Value) -Target $hits
+                    $muiFound=$true; break
+                }
+            }
+        }catch{}
+    }
+
+    # AppCompat Store is a persistent compatibility/execution artifact.
+    $appCompat='HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store'
+    if(Test-Path -LiteralPath $appCompat){
+        try{
+            $data=Get-ItemProperty -LiteralPath $appCompat -ErrorAction Stop
+            $property=$data.PSObject.Properties | Where-Object {$_.Name -match '(?i)\\198macros?(?:\(\d+\))?\.exe$'} | Select-Object -First 1
+            if($property){Add-198Hit '198Macros AppCompat Entry Found' $property.Name $null 'Registry' 'Compatibility Assistant Store' -Target $hits}
+        }catch{}
+    }
+
+    # PCA Event 17 directly records execution when Windows emits it.
+    try{
+        $events=@(Get-WinEvent -FilterHashtable @{
+            LogName='Microsoft-Windows-Application-Experience/Program-Compatibility-Assistant'; Id=17
+        } -ErrorAction Stop | Where-Object {$_.Message -match '(?i)198macros?[^\r\n]*\.exe'} | Sort-Object TimeCreated -Descending)
+        if($events.Count -gt 0){
+            $event=$events[0]
+            $m=[regex]::Match($event.Message,'(?im)([A-Z]:\\[^\r\n]*?198macros?[^\r\n]*?\.exe)')
+            $path=if($m.Success){$m.Groups[1].Value.Trim()}else{'198macros executable'}
+            Add-198Hit '198Macros PCA Execution Event Found' $path $event.TimeCreated -Target $hits
+        }
+    }catch{}
+
+    # Fixed startup-agent path embedded in the executable; require matching content to reduce false positives.
+    $agent='C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\agent.pyw'
+    if(Test-Path -LiteralPath $agent -PathType Leaf){
+        try{
+            $item=Get-Item -LiteralPath $agent -Force
+            $content=Get-Content -LiteralPath $agent -Raw -ErrorAction Stop
+            if($content -match '(?i)198macros?|198 Macros'){Add-198Hit '198Macros Startup Agent Found' $item.FullName $item.LastWriteTime -Target $hits}
+        }catch{}
+    }
+
+    return $hits
+}
+
+
 function Write-HistoryScanReport {
     param($PrefetchHits, $RecentHits, $ArtifactHits)
 
@@ -1771,7 +1971,7 @@ function Write-HistoryScanReport {
         Write-Host "  Artifact folder matches:" -ForegroundColor Red
         foreach ($hit in $ArtifactHits) {
             if ($hit.Kind -eq 'Registry') {
-                Write-Host "    • FLAGGED: Dqrkis MUICache Entry Found" -ForegroundColor Red
+                Write-Host "    • FLAGGED: $($hit.Artifact)" -ForegroundColor Red
                 Write-Host "       Application: $($hit.Application)" -ForegroundColor White
             } elseif ($hit.Kind -eq 'Config') {
                 $dayLabel = if ($hit.DaysAgo -eq 1) { 'day' } else { 'days' }
@@ -2164,7 +2364,11 @@ Write-Host "`r$(' ' * 100)`r" -NoNewline
 
 $prefetchHits = Invoke-PrefetchScan
 $recentHits   = Invoke-RecentLnkScan
-$artifactHits = Invoke-HistoryArtifactPathScan
+$artifactHits = @(
+    Invoke-HistoryArtifactPathScan
+    Invoke-NuxorArtifactScan
+    Invoke-198MacrosArtifactScan
+)
 $processHits  = Invoke-TaskManagerProcessScan
 $dnsHits      = Invoke-DnsIndicatorScan
 Write-TaskManagerScanReport -ProcessHits $processHits
